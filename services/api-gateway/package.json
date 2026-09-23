@@ -1,0 +1,31 @@
+{
+  "name": "@fleetflow/api-gateway",
+  "version": "1.0.0",
+  "private": true,
+  "description": "FleetFlow API Gateway",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js"
+  },
+  "keywords": [
+    "fleetflow",
+    "api-gateway",
+    "microservices"
+  ],
+  "author": "Muhammad Bilal",
+  "license": "MIT",
+  "dependencies": {
+    "@fastify/cors": "^11.3.0",
+    "@fastify/helmet": "^13.1.1",
+    "@fastify/http-proxy": "^11.6.2",
+    "dotenv": "^18.0.3",
+    "fastify": "^5.12.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
