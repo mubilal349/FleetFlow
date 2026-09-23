@@ -1,12 +1,13 @@
-import { FastifyReply, FastifyRequest } from "fastify";
-import jwt, { JwtPayload } from "jsonwebtoken";
+import type { FastifyReply, FastifyRequest } from "fastify";
+import jwt, { type JwtPayload } from "jsonwebtoken";
 
-import { UserRole } from "../models/User.js";
+import type { UserRole } from "../models/User.js";
 
 interface AccessTokenPayload extends JwtPayload {
   userId: string;
   email: string;
   role: UserRole;
+  organizationId: string;
 }
 
 const getJwtSecret = (): string => {
@@ -40,7 +41,7 @@ export const authenticate = async (
       });
     }
 
-    const token = authorization.substring(7);
+    const token = authorization.substring(7).trim();
 
     if (!token) {
       return reply.code(401).send({
@@ -51,7 +52,12 @@ export const authenticate = async (
 
     const decoded = jwt.verify(token, getJwtSecret()) as AccessTokenPayload;
 
-    if (!decoded.userId || !decoded.email || !decoded.role) {
+    if (
+      !decoded.userId ||
+      !decoded.email ||
+      !decoded.role ||
+      !decoded.organizationId
+    ) {
       return reply.code(401).send({
         success: false,
         message: "Invalid authentication token.",
@@ -62,6 +68,7 @@ export const authenticate = async (
       userId: decoded.userId,
       email: decoded.email,
       role: decoded.role,
+      organizationId: decoded.organizationId,
     };
   } catch {
     return reply.code(401).send({

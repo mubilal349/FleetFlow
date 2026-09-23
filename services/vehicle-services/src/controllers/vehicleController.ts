@@ -1,4 +1,5 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
+
 import { ZodError } from "zod";
 
 import {
@@ -50,14 +51,15 @@ export async function createVehicleController(
   try {
     const body = createVehicleSchema.parse(request.body);
 
-    const vehicle = await createVehicleService(body);
+    const vehicle = await createVehicleService({
+      ...body,
+      organizationId: request.user.organizationId,
+    });
 
     return reply.status(201).send({
       success: true,
       message: "Vehicle created successfully.",
-      data: {
-        vehicle,
-      },
+      data: { vehicle },
     });
   } catch (error) {
     return handleError(reply, error);
@@ -71,7 +73,10 @@ export async function getVehiclesController(
   try {
     const query = listVehiclesQuerySchema.parse(request.query);
 
-    const result = await getVehiclesService(query);
+    const result = await getVehiclesService({
+      ...query,
+      organizationId: request.user.organizationId,
+    });
 
     return reply.status(200).send({
       success: true,
@@ -90,20 +95,12 @@ export async function getVehicleController(
   try {
     const { id } = vehicleIdParamsSchema.parse(request.params);
 
-    const query = listVehiclesQuerySchema
-      .pick({
-        organizationId: true,
-      })
-      .parse(request.query);
-
-    const vehicle = await getVehicleService(id, query.organizationId);
+    const vehicle = await getVehicleService(id, request.user.organizationId);
 
     return reply.status(200).send({
       success: true,
       message: "Vehicle retrieved successfully.",
-      data: {
-        vehicle,
-      },
+      data: { vehicle },
     });
   } catch (error) {
     return handleError(reply, error);
@@ -117,26 +114,18 @@ export async function updateVehicleController(
   try {
     const { id } = vehicleIdParamsSchema.parse(request.params);
 
-    const query = listVehiclesQuerySchema
-      .pick({
-        organizationId: true,
-      })
-      .parse(request.query);
-
     const updates = updateVehicleSchema.parse(request.body);
 
     const vehicle = await updateVehicleService(
       id,
-      query.organizationId,
+      request.user.organizationId,
       updates,
     );
 
     return reply.status(200).send({
       success: true,
       message: "Vehicle updated successfully.",
-      data: {
-        vehicle,
-      },
+      data: { vehicle },
     });
   } catch (error) {
     return handleError(reply, error);
@@ -150,26 +139,22 @@ export async function updateVehicleStatusController(
   try {
     const { id } = vehicleIdParamsSchema.parse(request.params);
 
-    const query = listVehiclesQuerySchema
-      .pick({
-        organizationId: true,
-      })
-      .parse(request.query);
-
     const { status } = updateVehicleStatusSchema.parse(request.body);
 
-    const vehicle = await updateVehicleService(id, query.organizationId, {
-      $set: {
-        status,
+    const vehicle = await updateVehicleService(
+      id,
+      request.user.organizationId,
+      {
+        $set: {
+          status,
+        },
       },
-    });
+    );
 
     return reply.status(200).send({
       success: true,
       message: "Vehicle status updated successfully.",
-      data: {
-        vehicle,
-      },
+      data: { vehicle },
     });
   } catch (error) {
     return handleError(reply, error);
@@ -183,20 +168,15 @@ export async function deleteVehicleController(
   try {
     const { id } = vehicleIdParamsSchema.parse(request.params);
 
-    const query = listVehiclesQuerySchema
-      .pick({
-        organizationId: true,
-      })
-      .parse(request.query);
-
-    const vehicle = await deactivateVehicleService(id, query.organizationId);
+    const vehicle = await deactivateVehicleService(
+      id,
+      request.user.organizationId,
+    );
 
     return reply.status(200).send({
       success: true,
       message: "Vehicle deactivated successfully.",
-      data: {
-        vehicle,
-      },
+      data: { vehicle },
     });
   } catch (error) {
     return handleError(reply, error);

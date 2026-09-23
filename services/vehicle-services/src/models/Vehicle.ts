@@ -203,6 +203,8 @@ vehicleSchema.index({
   driverId: 1,
 });
 
-export type Vehicle = InferSchemaType<typeof vehicleSchema>;
+export type Vehicle = InferSchemaType<typeof vehicleSchema> & {
+  _id: string;
+};
 
 export const VehicleModel = model<Vehicle>("Vehicle", vehicleSchema);

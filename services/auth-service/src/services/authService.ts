@@ -27,6 +27,15 @@ interface AuthResponse {
   token: string;
 }
 
+/**
+ * Temporary development organization.
+ *
+ * This will eventually come from the Organization Service
+ * when FleetFlow supports real organization creation and
+ * membership management.
+ */
+const DEFAULT_ORGANIZATION_ID = "org-demo-001";
+
 const getJwtSecret = (): string => {
   const secret = process.env.JWT_SECRET;
 
@@ -47,6 +56,7 @@ const generateToken = (user: IUser): string => {
       userId: user._id.toString(),
       email: user.email,
       role: user.role,
+      organizationId: user.organizationId,
     },
     secret,
     {
@@ -84,7 +94,9 @@ export const registerUser = async (
       throw new Error("Password must be at least 8 characters long.");
     }
 
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findOne({
+      email,
+    });
 
     if (existingUser) {
       throw new Error("An account with this email already exists.");
@@ -97,6 +109,10 @@ export const registerUser = async (
       email,
       password: hashedPassword,
       role: input.role || "customer",
+
+      // Temporary organization until the
+      // Organization Service is implemented.
+      organizationId: DEFAULT_ORGANIZATION_ID,
     });
 
     const token = generateToken(user);
@@ -110,6 +126,7 @@ export const registerUser = async (
 
     if (error instanceof Error) {
       console.error("❌ Error message:", error.message);
+
       console.error("❌ Error stack:", error.stack);
     }
 
@@ -119,13 +136,16 @@ export const registerUser = async (
 
 export const loginUser = async (input: LoginInput): Promise<AuthResponse> => {
   const email = input.email.trim().toLowerCase();
+
   const password = input.password;
 
   if (!email || !password) {
     throw new Error("Email and password are required.");
   }
 
-  const user = await User.findOne({ email }).select("+password");
+  const user = await User.findOne({
+    email,
+  }).select("+password");
 
   if (!user) {
     throw new Error("Invalid email or password.");
@@ -133,6 +153,16 @@ export const loginUser = async (input: LoginInput): Promise<AuthResponse> => {
 
   if (!user.isActive) {
     throw new Error("Your account has been deactivated.");
+  }
+
+  /*
+   * Existing users created before organizationId
+   * was introduced may not have an organization.
+   */
+  if (!user.organizationId) {
+    user.organizationId = DEFAULT_ORGANIZATION_ID;
+
+    await user.save();
   }
 
   const passwordMatches = await bcrypt.compare(password, user.password);

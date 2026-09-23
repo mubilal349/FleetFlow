@@ -21,7 +21,6 @@ async function startServer() {
     });
 
     await app.register(healthRoutes);
-
     await app.register(vehicleRoutes);
 
     await app.listen({
@@ -32,7 +31,6 @@ async function startServer() {
     console.log(`🚗 Vehicle Service running on http://localhost:${env.PORT}`);
   } catch (error) {
     app.log.error(error);
-
     process.exit(1);
   }
 }

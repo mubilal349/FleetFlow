@@ -49,6 +49,12 @@ export interface CreateVehicleInput {
   notes?: string;
 }
 
+/**
+ * Create a vehicle inside the authenticated user's organization.
+ *
+ * organizationId must come from the authenticated JWT context.
+ * The client should never be trusted to choose the organization.
+ */
 export async function createVehicleService(
   input: CreateVehicleInput,
 ): Promise<Vehicle> {
@@ -77,10 +83,14 @@ export async function createVehicleService(
 
   return createVehicle({
     ...input,
+    organizationId: input.organizationId,
     registrationNumber,
   });
 }
 
+/**
+ * Get one vehicle belonging to the authenticated user's organization.
+ */
 export async function getVehicleService(
   id: string,
   organizationId: string,
@@ -98,20 +108,45 @@ export async function getVehicleService(
   return vehicle;
 }
 
+/**
+ * Get vehicles belonging only to the authenticated user's organization.
+ */
 export async function getVehiclesService(options: VehicleListOptions) {
   return listVehicles(options);
 }
 
+/**
+ * Update a vehicle belonging to the authenticated user's organization.
+ */
 export async function updateVehicleService(
   id: string,
   organizationId: string,
   updates: UpdateQuery<Vehicle>,
 ): Promise<Vehicle> {
+  /*
+   * organizationId is controlled by the service and must never
+   * be changed through a vehicle update request.
+   */
+  if ("organizationId" in updates) {
+    delete updates.organizationId;
+  }
+
+  /*
+   * Normalize registration number before checking uniqueness.
+   */
   if (
     updates.registrationNumber !== undefined &&
     typeof updates.registrationNumber === "string"
   ) {
     const registrationNumber = updates.registrationNumber.trim().toUpperCase();
+
+    if (!registrationNumber) {
+      throw new VehicleServiceError(
+        "Registration number cannot be empty.",
+        400,
+        "REGISTRATION_NUMBER_REQUIRED",
+      );
+    }
 
     const existingVehicle = await findVehicleByRegistrationNumber(
       registrationNumber,
@@ -142,6 +177,11 @@ export async function updateVehicleService(
   return vehicle;
 }
 
+/**
+ * Soft-delete a vehicle by changing its status to inactive.
+ *
+ * The vehicle remains in the database for historical records.
+ */
 export async function deactivateVehicleService(
   id: string,
   organizationId: string,

@@ -46,8 +46,6 @@ const insuranceSchema = z
   .optional();
 
 export const createVehicleSchema = z.object({
-  organizationId: z.string().trim().min(1),
-
   registrationNumber: z.string().trim().min(1).max(50),
 
   make: z.string().trim().min(1).max(100),
@@ -142,8 +140,6 @@ export const vehicleIdParamsSchema = z.object({
 });
 
 export const listVehiclesQuerySchema = z.object({
-  organizationId: z.string().trim().min(1),
-
   status: z.enum(vehicleStatuses).optional(),
 
   vehicleType: z.enum(vehicleTypes).optional(),
