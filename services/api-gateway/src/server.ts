@@ -1,25 +1,34 @@
-import "dotenv/config";
+import Fastify from "fastify";
+import cors from "@fastify/cors";
 
-import { buildApp } from "./app.js";
+import { env } from "./config/env.js";
+import { authRoutes } from "./routes/authRoutes.js";
+import { vehicleRoutes } from "./routes/vehicleRoutes.js";
 
-const PORT = Number(process.env.PORT) || 4000;
-const HOST = process.env.HOST || "0.0.0.0";
+const app = Fastify({
+  logger: true,
+});
 
-const startServer = async () => {
+async function startServer() {
   try {
-    const app = await buildApp();
-
-    await app.listen({
-      port: PORT,
-      host: HOST,
+    await app.register(cors, {
+      origin: true,
+      credentials: true,
     });
 
-    console.log(`🚚 FleetFlow API Gateway running on http://localhost:${PORT}`);
-  } catch (error) {
-    console.error("❌ Failed to start API Gateway:", error);
+    await app.register(authRoutes);
+    await app.register(vehicleRoutes);
 
+    await app.listen({
+      port: env.PORT,
+      host: env.HOST,
+    });
+
+    console.log(`🌐 API Gateway running on http://localhost:${env.PORT}`);
+  } catch (error) {
+    app.log.error(error);
     process.exit(1);
   }
-};
+}
 
 startServer();
