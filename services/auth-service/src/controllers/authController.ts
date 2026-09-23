@@ -20,6 +20,12 @@ export const register = async (
   reply: FastifyReply,
 ) => {
   try {
+    console.log("🟢 Register request body:", {
+      name: request.body?.name,
+      email: request.body?.email,
+      hasPassword: Boolean(request.body?.password),
+    });
+
     const { name, email, password } = request.body;
 
     const result = await registerUser({
@@ -28,12 +34,21 @@ export const register = async (
       password,
     });
 
+    console.log("🟢 User registered successfully:", result.user);
+
     return reply.code(201).send({
       success: true,
       message: "Account created successfully.",
       data: result,
     });
   } catch (error) {
+    console.error("🔴 REGISTER CONTROLLER ERROR:", error);
+
+    if (error instanceof Error) {
+      console.error("🔴 MESSAGE:", error.message);
+      console.error("🔴 STACK:", error.stack);
+    }
+
     const message =
       error instanceof Error ? error.message : "Registration failed.";
 

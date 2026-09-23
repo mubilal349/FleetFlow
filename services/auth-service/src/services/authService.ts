@@ -67,43 +67,54 @@ const sanitizeUser = (user: IUser): AuthUser => {
 export const registerUser = async (
   input: RegisterInput,
 ): Promise<AuthResponse> => {
-  const name = input.name.trim();
-  const email = input.email.trim().toLowerCase();
-  const password = input.password;
+  try {
+    const name = input.name.trim();
+    const email = input.email.trim().toLowerCase();
+    const password = input.password;
 
-  if (!name || !email || !password) {
-    throw new Error("Name, email and password are required.");
+    if (!name || !email || !password) {
+      throw new Error("Name, email and password are required.");
+    }
+
+    if (name.length < 2) {
+      throw new Error("Name must be at least 2 characters long.");
+    }
+
+    if (password.length < 8) {
+      throw new Error("Password must be at least 8 characters long.");
+    }
+
+    const existingUser = await User.findOne({ email });
+
+    if (existingUser) {
+      throw new Error("An account with this email already exists.");
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 12);
+
+    const user = await User.create({
+      name,
+      email,
+      password: hashedPassword,
+      role: input.role || "customer",
+    });
+
+    const token = generateToken(user);
+
+    return {
+      user: sanitizeUser(user),
+      token,
+    };
+  } catch (error) {
+    console.error("❌ registerUser failed:", error);
+
+    if (error instanceof Error) {
+      console.error("❌ Error message:", error.message);
+      console.error("❌ Error stack:", error.stack);
+    }
+
+    throw error;
   }
-
-  if (name.length < 2) {
-    throw new Error("Name must be at least 2 characters long.");
-  }
-
-  if (password.length < 8) {
-    throw new Error("Password must be at least 8 characters long.");
-  }
-
-  const existingUser = await User.findOne({ email });
-
-  if (existingUser) {
-    throw new Error("An account with this email already exists.");
-  }
-
-  const hashedPassword = await bcrypt.hash(password, 12);
-
-  const user = await User.create({
-    name,
-    email,
-    password: hashedPassword,
-    role: input.role || "customer",
-  });
-
-  const token = generateToken(user);
-
-  return {
-    user: sanitizeUser(user),
-    token,
-  };
 };
 
 export const loginUser = async (input: LoginInput): Promise<AuthResponse> => {

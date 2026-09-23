@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
+import { ArrowLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { useAuth } from "@/context/AuthContext";
@@ -21,6 +22,18 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(false);
 
   const [darkMode, setDarkMode] = useState(true);
+
+  // --------------------------------------------------
+  // Page entrance animation
+  // --------------------------------------------------
+  // Starts false on every mount (initial load OR refresh), then flips
+  // true one frame later so the CSS transitions below always replay.
+  const [pageLoaded, setPageLoaded] = useState(false);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setPageLoaded(true));
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   // --------------------------------------------------
   // Theme
@@ -102,10 +115,19 @@ export default function LoginPage() {
     }
   };
 
+  // Small helper so every entrance element shares the same transition
+  // behavior and only differs by stagger delay.
+  const enter = (delayClass = "") =>
+    `transition-all duration-700 ease-out ${delayClass} ${
+      pageLoaded ? "translate-y-0 opacity-100" : "translate-y-6 opacity-0"
+    }`;
+
   return (
     <main
       className={`relative min-h-screen overflow-hidden transition-colors duration-500 ${
         darkMode ? "bg-[#050816] text-white" : "bg-slate-50 text-slate-900"
+      } transition-opacity duration-700 ease-out ${
+        pageLoaded ? "opacity-100" : "opacity-0"
       }`}
     >
       {/* --------------------------------------------------
@@ -216,7 +238,9 @@ export default function LoginPage() {
             <section className="hidden lg:block">
               <div className="max-w-xl">
                 <div
-                  className={`mb-6 inline-flex animate-[fadeInUp_0.6s_ease-out] items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold ${
+                  className={`mb-6 inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold ${enter(
+                    "delay-100",
+                  )} ${
                     darkMode
                       ? "border-blue-500/20 bg-blue-500/10 text-blue-400"
                       : "border-blue-200 bg-blue-50 text-blue-600"
@@ -226,7 +250,11 @@ export default function LoginPage() {
                   Welcome back to FleetFlow
                 </div>
 
-                <h1 className="animate-[fadeInUp_0.7s_ease-out] text-5xl font-black leading-[1.08] tracking-tight xl:text-6xl">
+                <h1
+                  className={`text-5xl font-black leading-[1.08] tracking-tight xl:text-6xl ${enter(
+                    "delay-150",
+                  )}`}
+                >
                   Keep your fleet
                   <br />
                   <span className="bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-500 bg-clip-text text-transparent">
@@ -235,9 +263,9 @@ export default function LoginPage() {
                 </h1>
 
                 <p
-                  className={`mt-7 max-w-lg animate-[fadeInUp_0.8s_ease-out] text-lg leading-8 ${
-                    darkMode ? "text-slate-400" : "text-slate-600"
-                  }`}
+                  className={`mt-7 max-w-lg text-lg leading-8 ${enter(
+                    "delay-200",
+                  )} ${darkMode ? "text-slate-400" : "text-slate-600"}`}
                 >
                   Sign in to your FleetFlow workspace and stay on top of your
                   vehicles, drivers, trips, maintenance, and operations.
@@ -247,7 +275,7 @@ export default function LoginPage() {
 
                 <div className="mt-10 grid max-w-xl grid-cols-3 gap-4">
                   <div
-                    className={`animate-[fadeInUp_0.9s_ease-out] rounded-2xl border p-4 ${
+                    className={`rounded-2xl border p-4 ${enter("delay-300")} ${
                       darkMode
                         ? "border-slate-800 bg-slate-900/60"
                         : "border-slate-200 bg-white shadow-sm"
@@ -264,7 +292,9 @@ export default function LoginPage() {
                   </div>
 
                   <div
-                    className={`animate-[fadeInUp_1s_ease-out] rounded-2xl border p-4 ${
+                    className={`rounded-2xl border p-4 ${enter(
+                      "delay-[350ms]",
+                    )} ${
                       darkMode
                         ? "border-slate-800 bg-slate-900/60"
                         : "border-slate-200 bg-white shadow-sm"
@@ -281,7 +311,9 @@ export default function LoginPage() {
                   </div>
 
                   <div
-                    className={`animate-[fadeInUp_1.1s_ease-out] rounded-2xl border p-4 ${
+                    className={`rounded-2xl border p-4 ${enter(
+                      "delay-[400ms]",
+                    )} ${
                       darkMode
                         ? "border-slate-800 bg-slate-900/60"
                         : "border-slate-200 bg-white shadow-sm"
@@ -305,7 +337,9 @@ export default function LoginPage() {
             -------------------------------------------------- */}
 
             <section
-              className={`w-full animate-[fadeInUp_0.7s_ease-out] rounded-[2rem] border p-6 shadow-2xl transition-all duration-500 sm:p-8 ${
+              className={`w-full rounded-[2rem] border p-6 shadow-2xl transition-all duration-500 sm:p-8 ${enter(
+                "delay-150",
+              )} ${
                 darkMode
                   ? "border-slate-800/80 bg-slate-900/80 shadow-black/30 backdrop-blur-xl"
                   : "border-slate-200 bg-white/90 shadow-slate-200/60 backdrop-blur-xl"
@@ -473,7 +507,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="group relative flex w-full overflow-hidden rounded-xl bg-blue-600 px-4 py-3.5 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition-all duration-300 hover:-translate-y-0.5 hover:bg-blue-500 hover:shadow-xl hover:shadow-blue-600/25 focus:outline-none focus:ring-4 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                  className="group relative flex w-full overflow-hidden rounded-xl bg-blue-600 px-4 py-3.5 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition-all duration-300 hover:-translate-y-0.5 hover:bg-blue-500 hover:shadow-xl hover:shadow-blue-600/25 focus:outline-none focus:ring-4 focus:ring-blue-500/20 cursor-pointer disabled:opacity-60 disabled:hover:translate-y-0"
                 >
                   <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/15 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
 
@@ -486,9 +520,18 @@ export default function LoginPage() {
                     ) : (
                       <>
                         Sign in to FleetFlow
-                        <span className="transition-transform duration-300 group-hover:translate-x-1">
-                          →
-                        </span>
+                        <svg
+                          width="23"
+                          height="23"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                        >
+                          <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+                          <polyline points="10 17 15 12 10 7" />
+                          <line x1="15" y1="12" x2="3" y2="12" />
+                        </svg>
                       </>
                     )}
                   </span>
@@ -522,13 +565,27 @@ export default function LoginPage() {
               <div className="mt-5 text-center">
                 <Link
                   href="/"
-                  className={`text-xs transition-colors ${
+                  className={`group flex items-center justify-center gap-2 text-xs transition-colors ${
                     darkMode
                       ? "text-slate-600 hover:text-slate-400"
                       : "text-slate-400 hover:text-slate-600"
                   }`}
                 >
-                  ← Back to FleetFlow
+                  <svg
+                    width="23"
+                    height="23"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    className="shrink-0 transition-transform duration-300 group-hover:-translate-x-1"
+                  >
+                    <path d="M9 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h4" />
+                    <polyline points="14 17 9 12 14 7" />
+                    <line x1="9" y1="12" x2="21" y2="12" />
+                  </svg>
+
+                  <span>Back to FleetFlow</span>
                 </Link>
               </div>
             </section>
@@ -541,28 +598,6 @@ export default function LoginPage() {
       -------------------------------------------------- */}
 
       <style jsx global>{`
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-          }
-
-          to {
-            opacity: 1;
-          }
-        }
-
-        @keyframes fadeInUp {
-          from {
-            opacity: 0;
-            transform: translateY(25px);
-          }
-
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
         @keyframes float {
           0%,
           100% {

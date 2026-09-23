@@ -9,13 +9,32 @@ import {
 } from "react";
 
 import { api } from "@/lib/api";
-import { User } from "@/types/auth";
+
+type UserRole = "admin" | "manager" | "driver" | "customer";
+
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+}
+
+interface LoginData {
+  email: string;
+  password: string;
+}
+
+interface RegisterData {
+  name: string;
+  email: string;
+  password: string;
+}
 
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<void>;
+  login: (data: LoginData) => Promise<void>;
+  register: (data: RegisterData) => Promise<void>;
   logout: () => void;
 }
 
@@ -49,7 +68,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     restoreSession();
   }, []);
 
-  const login = async (email: string, password: string) => {
+  // -------------------------
+  // LOGIN
+  // -------------------------
+
+  const login = async ({ email, password }: LoginData): Promise<void> => {
     const response = await api.post("/api/auth/login", {
       email,
       password,
@@ -61,7 +84,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(user);
   };
 
-  const register = async (name: string, email: string, password: string) => {
+  // -------------------------
+  // REGISTER
+  // -------------------------
+
+  const register = async ({
+    name,
+    email,
+    password,
+  }: RegisterData): Promise<void> => {
     const response = await api.post("/api/auth/register", {
       name,
       email,
@@ -74,7 +105,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(user);
   };
 
-  const logout = () => {
+  // -------------------------
+  // LOGOUT
+  // -------------------------
+
+  const logout = (): void => {
     localStorage.removeItem("fleetflow_token");
     setUser(null);
   };
