@@ -1,9 +1,11 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 
-import { env } from "./config/env.js";
 import { connectDatabase } from "./config/database.js";
+import { env } from "./config/env.js";
+
 import { healthRoutes } from "./routes/healthRoutes.js";
+import { vehicleRoutes } from "./routes/vehicleRoutes.js";
 
 const app = Fastify({
   logger: true,
@@ -19,6 +21,8 @@ async function startServer() {
     });
 
     await app.register(healthRoutes);
+
+    await app.register(vehicleRoutes);
 
     await app.listen({
       port: env.PORT,
