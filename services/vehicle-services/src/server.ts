@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 
 import { env } from "./config/env.js";
+import { connectDatabase } from "./config/database.js";
 import { healthRoutes } from "./routes/healthRoutes.js";
 
 const app = Fastify({
@@ -10,6 +11,8 @@ const app = Fastify({
 
 async function startServer() {
   try {
+    await connectDatabase();
+
     await app.register(cors, {
       origin: true,
       credentials: true,
@@ -25,6 +28,7 @@ async function startServer() {
     console.log(`🚗 Vehicle Service running on http://localhost:${env.PORT}`);
   } catch (error) {
     app.log.error(error);
+
     process.exit(1);
   }
 }
