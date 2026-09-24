@@ -12,8 +12,11 @@ export const buildApp = async () => {
 
   await app.register(cors, {
     origin: "http://localhost:3000",
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
   });
+  console.log("✅ CORS configured with PATCH + DELETE");
 
   app.get("/health", async () => {
     return {
@@ -31,6 +34,15 @@ export const buildApp = async () => {
     upstream: authServiceUrl,
     prefix: "/api/auth",
     rewritePrefix: "/auth",
+  });
+
+  const vehicleServiceUrl =
+    process.env.VEHICLE_SERVICE_URL || "http://localhost:4002";
+
+  await app.register(proxy, {
+    upstream: vehicleServiceUrl,
+    prefix: "/api/vehicles",
+    rewritePrefix: "/vehicles",
   });
 
   return app;

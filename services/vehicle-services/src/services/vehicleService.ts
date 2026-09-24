@@ -2,6 +2,7 @@ import type { UpdateQuery } from "mongoose";
 
 import {
   createVehicle,
+  deactivateVehicle,
   deleteVehicle,
   findVehicleById,
   findVehicleByRegistrationNumber,
@@ -52,8 +53,7 @@ export interface CreateVehicleInput {
 /**
  * Create a vehicle inside the authenticated user's organization.
  *
- * organizationId must come from the authenticated JWT context.
- * The client should never be trusted to choose the organization.
+ * organizationId is always taken from the authenticated JWT.
  */
 export async function createVehicleService(
   input: CreateVehicleInput,
@@ -124,15 +124,14 @@ export async function updateVehicleService(
   updates: UpdateQuery<Vehicle>,
 ): Promise<Vehicle> {
   /*
-   * organizationId is controlled by the service and must never
-   * be changed through a vehicle update request.
+   * organizationId must never be changed through an update request.
    */
   if ("organizationId" in updates) {
     delete updates.organizationId;
   }
 
   /*
-   * Normalize registration number before checking uniqueness.
+   * Normalize registration number and enforce uniqueness.
    */
   if (
     updates.registrationNumber !== undefined &&
@@ -178,11 +177,29 @@ export async function updateVehicleService(
 }
 
 /**
- * Soft-delete a vehicle by changing its status to inactive.
- *
- * The vehicle remains in the database for historical records.
+ * Soft-deactivate a vehicle.
  */
 export async function deactivateVehicleService(
+  id: string,
+  organizationId: string,
+): Promise<Vehicle> {
+  const vehicle = await deactivateVehicle(id, organizationId);
+
+  if (!vehicle) {
+    throw new VehicleServiceError(
+      "Vehicle not found.",
+      404,
+      "VEHICLE_NOT_FOUND",
+    );
+  }
+
+  return vehicle;
+}
+
+/**
+ * Permanently delete a vehicle from MongoDB.
+ */
+export async function deleteVehicleService(
   id: string,
   organizationId: string,
 ): Promise<Vehicle> {

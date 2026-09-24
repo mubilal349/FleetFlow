@@ -21,9 +21,7 @@ export interface VehicleListResult {
 }
 
 export async function createVehicle(data: Partial<Vehicle>): Promise<Vehicle> {
-  const vehicle = await VehicleModel.create(data);
-
-  return vehicle;
+  return VehicleModel.create(data);
 }
 
 export async function findVehicleById(
@@ -76,10 +74,9 @@ export async function listVehicles(
   }
 
   if (search?.trim()) {
-    const searchRegex = new RegExp(
-      search.trim().replace(/[.*+?^${}()|[]\]/g, "\$&"),
-      "i",
-    );
+    const escapedSearch = search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+    const searchRegex = new RegExp(escapedSearch, "i");
 
     filter.$or = [
       { registrationNumber: searchRegex },
@@ -112,6 +109,10 @@ export async function listVehicles(
   };
 }
 
+/**
+ * Update vehicle fields while keeping the vehicle
+ * inside the authenticated organization.
+ */
 export async function updateVehicle(
   id: string,
   organizationId: string,
@@ -130,7 +131,23 @@ export async function updateVehicle(
   ).exec();
 }
 
+/**
+ * Permanently delete a vehicle from MongoDB.
+ */
 export async function deleteVehicle(
+  id: string,
+  organizationId: string,
+): Promise<Vehicle | null> {
+  return VehicleModel.findOneAndDelete({
+    _id: id,
+    organizationId,
+  }).exec();
+}
+
+/**
+ * Soft-deactivate a vehicle.
+ */
+export async function deactivateVehicle(
   id: string,
   organizationId: string,
 ): Promise<Vehicle | null> {

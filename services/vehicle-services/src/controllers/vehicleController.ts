@@ -13,6 +13,7 @@ import {
 import {
   createVehicleService,
   deactivateVehicleService,
+  deleteVehicleService,
   getVehicleService,
   getVehiclesService,
   updateVehicleService,
@@ -59,7 +60,9 @@ export async function createVehicleController(
     return reply.status(201).send({
       success: true,
       message: "Vehicle created successfully.",
-      data: { vehicle },
+      data: {
+        vehicle,
+      },
     });
   } catch (error) {
     return handleError(reply, error);
@@ -100,7 +103,9 @@ export async function getVehicleController(
     return reply.status(200).send({
       success: true,
       message: "Vehicle retrieved successfully.",
-      data: { vehicle },
+      data: {
+        vehicle,
+      },
     });
   } catch (error) {
     return handleError(reply, error);
@@ -125,7 +130,9 @@ export async function updateVehicleController(
     return reply.status(200).send({
       success: true,
       message: "Vehicle updated successfully.",
-      data: { vehicle },
+      data: {
+        vehicle,
+      },
     });
   } catch (error) {
     return handleError(reply, error);
@@ -145,16 +152,16 @@ export async function updateVehicleStatusController(
       id,
       request.user.organizationId,
       {
-        $set: {
-          status,
-        },
+        status,
       },
     );
 
     return reply.status(200).send({
       success: true,
       message: "Vehicle status updated successfully.",
-      data: { vehicle },
+      data: {
+        vehicle,
+      },
     });
   } catch (error) {
     return handleError(reply, error);
@@ -162,6 +169,27 @@ export async function updateVehicleStatusController(
 }
 
 export async function deleteVehicleController(
+  request: FastifyRequest,
+  reply: FastifyReply,
+) {
+  try {
+    const { id } = vehicleIdParamsSchema.parse(request.params);
+
+    const vehicle = await deleteVehicleService(id, request.user.organizationId);
+
+    return reply.status(200).send({
+      success: true,
+      message: "Vehicle deleted successfully.",
+      data: {
+        vehicle,
+      },
+    });
+  } catch (error) {
+    return handleError(reply, error);
+  }
+}
+
+export async function deactivateVehicleController(
   request: FastifyRequest,
   reply: FastifyReply,
 ) {
@@ -176,7 +204,9 @@ export async function deleteVehicleController(
     return reply.status(200).send({
       success: true,
       message: "Vehicle deactivated successfully.",
-      data: { vehicle },
+      data: {
+        vehicle,
+      },
     });
   } catch (error) {
     return handleError(reply, error);

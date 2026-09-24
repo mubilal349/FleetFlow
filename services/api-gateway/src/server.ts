@@ -12,9 +12,13 @@ const app = Fastify({
 async function startServer() {
   try {
     await app.register(cors, {
+      methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      allowedHeaders: ["Content-Type", "Authorization"],
       origin: true,
       credentials: true,
     });
+
+    console.log("✅ CORS configured with PATCH + DELETE");
 
     await app.register(authRoutes);
     await app.register(vehicleRoutes);
