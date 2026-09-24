@@ -1,5 +1,4 @@
 import { buildApp } from "./app.js";
-
 import { env } from "./config/env.js";
 
 async function startServer() {
@@ -11,9 +10,11 @@ async function startServer() {
       host: env.HOST,
     });
 
-    console.log(`🌐 API Gateway running on http://localhost:${env.PORT}`);
+    console.log(
+      `🚗 Vehicle Request Service running on http://localhost:${env.PORT}`,
+    );
   } catch (error) {
-    console.error("❌ Failed to start API Gateway:", error);
+    console.error("Failed to start Vehicle Request Service:", error);
 
     process.exit(1);
   }

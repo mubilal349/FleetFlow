@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 
 import DashboardHeader from "../../components/dashboard/DashboardHeader";
 import DashboardSidebar from "../../components/dashboard/DashboardSidebar";
@@ -78,6 +78,15 @@ interface VehicleResponse {
   };
 }
 
+type VehicleRequestForm = {
+  purpose: string;
+  pickupLocation: string;
+  destination: string;
+  startDate: string;
+  endDate: string;
+  notes: string;
+};
+
 const statusStyles: Record<VehicleStatus, string> = {
   available:
     "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400",
@@ -135,6 +144,29 @@ export default function VehiclesPage() {
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
 
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  // ============================================================
+  // CUSTOMER VEHICLE REQUEST STATE
+  // ============================================================
+
+  const [showRequestModal, setShowRequestModal] = useState(false);
+
+  const [requestVehicle, setRequestVehicle] = useState<Vehicle | null>(null);
+
+  const [requestLoading, setRequestLoading] = useState(false);
+
+  const [requestError, setRequestError] = useState("");
+
+  const [requestSuccess, setRequestSuccess] = useState("");
+
+  const [requestForm, setRequestForm] = useState<VehicleRequestForm>({
+    purpose: "",
+    pickupLocation: "",
+    destination: "",
+    startDate: "",
+    endDate: "",
+    notes: "",
+  });
 
   const canManageVehicles = user?.role === "admin" || user?.role === "manager";
 
@@ -196,6 +228,10 @@ export default function VehiclesPage() {
     setPage(1);
   };
 
+  // ============================================================
+  // DEACTIVATE VEHICLE
+  // ============================================================
+
   const handleDeactivate = async (vehicle: Vehicle) => {
     if (vehicle.status === "inactive") {
       return;
@@ -226,6 +262,10 @@ export default function VehiclesPage() {
       setActionLoading(null);
     }
   };
+
+  // ============================================================
+  // DELETE VEHICLE
+  // ============================================================
 
   const handleDelete = async (vehicle: Vehicle) => {
     const confirmed = window.confirm(
@@ -260,6 +300,136 @@ export default function VehiclesPage() {
     }
   };
 
+  // ============================================================
+  // CUSTOMER VEHICLE REQUEST
+  // ============================================================
+
+  const handleOpenRequestModal = (vehicle: Vehicle) => {
+    // Customer can only request an available vehicle.
+    if (vehicle.status !== "available") {
+      return;
+    }
+
+    setRequestVehicle(vehicle);
+
+    setRequestForm({
+      purpose: "",
+      pickupLocation: "",
+      destination: "",
+      startDate: "",
+      endDate: "",
+      notes: "",
+    });
+
+    setRequestError("");
+    setRequestSuccess("");
+    setShowRequestModal(true);
+  };
+
+  const handleCloseRequestModal = () => {
+    if (requestLoading) {
+      return;
+    }
+
+    setShowRequestModal(false);
+    setRequestVehicle(null);
+    setRequestError("");
+    setRequestSuccess("");
+  };
+
+  const handleRequestVehicle = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!requestVehicle) {
+      return;
+    }
+
+    setRequestError("");
+    setRequestSuccess("");
+
+    if (!requestForm.purpose.trim()) {
+      setRequestError("Please enter the purpose of the request.");
+      return;
+    }
+
+    if (!requestForm.pickupLocation.trim()) {
+      setRequestError("Please enter the pickup location.");
+      return;
+    }
+
+    if (!requestForm.destination.trim()) {
+      setRequestError("Please enter the destination.");
+      return;
+    }
+
+    if (!requestForm.startDate) {
+      setRequestError("Please select the start date and time.");
+      return;
+    }
+
+    if (!requestForm.endDate) {
+      setRequestError("Please select the end date and time.");
+      return;
+    }
+
+    const startDate = new Date(requestForm.startDate);
+    const endDate = new Date(requestForm.endDate);
+
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+      setRequestError("Please provide valid dates.");
+      return;
+    }
+
+    if (endDate <= startDate) {
+      setRequestError("End date must be after start date.");
+      return;
+    }
+
+    try {
+      setRequestLoading(true);
+
+      const response = await api.post("/api/vehicle-requests", {
+        vehicleId: requestVehicle._id,
+        purpose: requestForm.purpose.trim(),
+        pickupLocation: requestForm.pickupLocation.trim(),
+        destination: requestForm.destination.trim(),
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        notes: requestForm.notes.trim() || undefined,
+      });
+
+      if (!response.data?.success) {
+        throw new Error(
+          response.data?.message || "Failed to submit vehicle request.",
+        );
+      }
+
+      setRequestSuccess(
+        "Vehicle request submitted successfully. Your request is now pending.",
+      );
+
+      setTimeout(() => {
+        setShowRequestModal(false);
+        setRequestVehicle(null);
+        setRequestSuccess("");
+      }, 1800);
+    } catch (err: any) {
+      console.error("Failed to submit vehicle request:", err);
+
+      setRequestError(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Failed to submit vehicle request.",
+      );
+    } finally {
+      setRequestLoading(false);
+    }
+  };
+
+  // ============================================================
+  // STATS
+  // ============================================================
+
   const availableCount = vehicles.filter(
     (vehicle) => vehicle.status === "available",
   ).length;
@@ -284,7 +454,10 @@ export default function VehiclesPage() {
         <DashboardHeader />
 
         <main className="p-4 sm:p-6 lg:p-8">
-          {/* Header */}
+          {/* ============================================================
+              HEADER
+          ============================================================ */}
+
           <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <div className="flex items-center gap-3">
@@ -339,7 +512,10 @@ export default function VehiclesPage() {
             )}
           </div>
 
-          {/* Stats */}
+          {/* ============================================================
+              STATS
+          ============================================================ */}
+
           <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard label="Total Vehicles" value={total} icon="fleet" />
 
@@ -358,7 +534,10 @@ export default function VehiclesPage() {
             />
           </div>
 
-          {/* Filters */}
+          {/* ============================================================
+              FILTERS
+          ============================================================ */}
+
           <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
             <div className="flex flex-col gap-3 xl:flex-row">
               <div className="relative flex-1">
@@ -397,10 +576,15 @@ export default function VehiclesPage() {
                 className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950"
               >
                 <option value="">All Statuses</option>
+
                 <option value="available">Available</option>
+
                 <option value="assigned">Assigned</option>
+
                 <option value="in_trip">In Trip</option>
+
                 <option value="maintenance">Maintenance</option>
+
                 <option value="inactive">Inactive</option>
               </select>
 
@@ -413,6 +597,7 @@ export default function VehiclesPage() {
                 className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950"
               >
                 <option value="">All Types</option>
+
                 <option value="car">Car</option>
                 <option value="van">Van</option>
                 <option value="pickup">Pickup</option>
@@ -441,7 +626,10 @@ export default function VehiclesPage() {
             </div>
           </div>
 
-          {/* Error */}
+          {/* ============================================================
+              ERROR
+          ============================================================ */}
+
           {error && (
             <div className="mt-6 flex items-start justify-between gap-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
               <span>{error}</span>
@@ -466,18 +654,27 @@ export default function VehiclesPage() {
             </div>
           )}
 
-          {/* Table */}
+          {/* ============================================================
+              VEHICLE TABLE
+          ============================================================ */}
+
           <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1100px]">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:bg-slate-950/60 dark:text-slate-400">
                     <th className="px-6 py-4">Vehicle</th>
+
                     <th className="px-6 py-4">Type</th>
+
                     <th className="px-6 py-4">Year</th>
+
                     <th className="px-6 py-4">Fuel</th>
+
                     <th className="px-6 py-4">Mileage</th>
+
                     <th className="px-6 py-4">Status</th>
+
                     <th className="px-6 py-4 text-right">Action</th>
                   </tr>
                 </thead>
@@ -556,7 +753,40 @@ export default function VehiclesPage() {
 
                         <td className="px-6 py-5">
                           <div className="flex items-center justify-end gap-1">
+                            {/* ====================================================
+                                CUSTOMER REQUEST BUTTON
+                            ==================================================== */}
+
+                            {user?.role === "customer" &&
+                              vehicle.status === "available" && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleOpenRequestModal(vehicle)
+                                  }
+                                  title="Request vehicle"
+                                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition hover:bg-blue-700"
+                                >
+                                  <svg
+                                    width="16"
+                                    height="16"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="1.8"
+                                  >
+                                    <path d="M5 17h14" />
+                                    <path d="M6 17l1-6h10l1 6" />
+                                    <path d="M8 11l1.5-4h5L16 11" />
+                                    <circle cx="8" cy="18" r="1.5" />
+                                    <circle cx="16" cy="18" r="1.5" />
+                                  </svg>
+                                  Request
+                                </button>
+                              )}
+
                             {/* View */}
+
                             <button
                               type="button"
                               onClick={() => setSelectedVehicle(vehicle)}
@@ -567,6 +797,7 @@ export default function VehiclesPage() {
                             </button>
 
                             {/* Admin / Manager Actions */}
+
                             {canManageVehicles && (
                               <>
                                 <button
@@ -657,7 +888,10 @@ export default function VehiclesPage() {
               </table>
             </div>
 
-            {/* Pagination */}
+            {/* ============================================================
+                PAGINATION
+            ============================================================ */}
+
             {!loading && vehicles.length > 0 && (
               <div className="flex flex-col gap-3 border-t border-slate-200 px-6 py-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800">
                 <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -693,7 +927,27 @@ export default function VehiclesPage() {
         </main>
       </div>
 
-      {/* Add Vehicle Modal */}
+      {/* ============================================================
+          REQUEST VEHICLE MODAL
+      ============================================================ */}
+
+      {showRequestModal && requestVehicle && (
+        <RequestVehicleModal
+          vehicle={requestVehicle}
+          form={requestForm}
+          setForm={setRequestForm}
+          loading={requestLoading}
+          error={requestError}
+          success={requestSuccess}
+          onClose={handleCloseRequestModal}
+          onSubmit={handleRequestVehicle}
+        />
+      )}
+
+      {/* ============================================================
+          ADD VEHICLE MODAL
+      ============================================================ */}
+
       {showAddModal && (
         <AddVehicleModal
           onClose={() => setShowAddModal(false)}
@@ -704,7 +958,10 @@ export default function VehiclesPage() {
         />
       )}
 
-      {/* View Vehicle Modal */}
+      {/* ============================================================
+          VIEW VEHICLE MODAL
+      ============================================================ */}
+
       {selectedVehicle && (
         <VehicleDetailsModal
           vehicle={selectedVehicle}
@@ -712,7 +969,10 @@ export default function VehiclesPage() {
         />
       )}
 
-      {/* Edit Vehicle Modal */}
+      {/* ============================================================
+          EDIT VEHICLE MODAL
+      ============================================================ */}
+
       {editingVehicle && (
         <EditVehicleModal
           vehicle={editingVehicle}
@@ -849,8 +1109,293 @@ function Spinner() {
       strokeWidth="2"
     >
       <circle cx="12" cy="12" r="9" className="opacity-25" />
+
       <path d="M21 12a9 9 0 0 1-9 9" className="opacity-90" />
     </svg>
+  );
+}
+
+/* ============================================================
+   REQUEST VEHICLE MODAL
+============================================================ */
+
+function RequestVehicleModal({
+  vehicle,
+  form,
+  setForm,
+  loading,
+  error,
+  success,
+  onClose,
+  onSubmit,
+}: {
+  vehicle: Vehicle;
+  form: VehicleRequestForm;
+  setForm: React.Dispatch<React.SetStateAction<VehicleRequestForm>>;
+  loading: boolean;
+  error: string;
+  success: string;
+  onClose: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <ModalBackdrop onClose={onClose}>
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+        {/* Header */}
+
+        <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5 dark:border-slate-800">
+          <div>
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-100 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400">
+                <svg
+                  width="21"
+                  height="21"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                >
+                  <path d="M5 17h14" />
+                  <path d="M6 17l1-6h10l1 6" />
+                  <path d="M8 11l1.5-4h5L16 11" />
+                  <circle cx="8" cy="18" r="1.5" />
+                  <circle cx="16" cy="18" r="1.5" />
+                </svg>
+              </div>
+
+              <div>
+                <h2 className="text-xl font-bold">Request Vehicle</h2>
+
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  {vehicle.make} {vehicle.model} · {vehicle.registrationNumber}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-white"
+            aria-label="Close"
+          >
+            <svg
+              width="19"
+              height="19"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="m6 6 12 12" />
+              <path d="m18 6-12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Form */}
+
+        <form onSubmit={onSubmit} className="p-6">
+          {/* Vehicle Summary */}
+
+          <div className="mb-6 flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                Vehicle Available
+              </p>
+
+              <p className="mt-1 font-semibold text-emerald-800 dark:text-emerald-300">
+                {vehicle.make} {vehicle.model}
+              </p>
+            </div>
+
+            <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400">
+              Available
+            </span>
+          </div>
+
+          {/* Error */}
+
+          {error && (
+            <div className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
+              {error}
+            </div>
+          )}
+
+          {/* Success */}
+
+          {success && (
+            <div className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-400">
+              {success}
+            </div>
+          )}
+
+          <div className="grid gap-5 sm:grid-cols-2">
+            {/* Purpose */}
+
+            <div className="sm:col-span-2">
+              <label className="mb-2 block text-sm font-semibold">
+                Purpose <span className="text-red-500">*</span>
+              </label>
+
+              <input
+                type="text"
+                required
+                maxLength={500}
+                value={form.purpose}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    purpose: event.target.value,
+                  }))
+                }
+                placeholder="e.g. Business trip"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:placeholder:text-slate-600"
+              />
+            </div>
+
+            {/* Pickup */}
+
+            <div>
+              <label className="mb-2 block text-sm font-semibold">
+                Pickup Location <span className="text-red-500">*</span>
+              </label>
+
+              <input
+                type="text"
+                required
+                maxLength={500}
+                value={form.pickupLocation}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    pickupLocation: event.target.value,
+                  }))
+                }
+                placeholder="e.g. Hangu"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:placeholder:text-slate-600"
+              />
+            </div>
+
+            {/* Destination */}
+
+            <div>
+              <label className="mb-2 block text-sm font-semibold">
+                Destination <span className="text-red-500">*</span>
+              </label>
+
+              <input
+                type="text"
+                required
+                maxLength={500}
+                value={form.destination}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    destination: event.target.value,
+                  }))
+                }
+                placeholder="e.g. Peshawar"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:placeholder:text-slate-600"
+              />
+            </div>
+
+            {/* Start */}
+
+            <div>
+              <label className="mb-2 block text-sm font-semibold">
+                Start Date & Time <span className="text-red-500">*</span>
+              </label>
+
+              <input
+                type="datetime-local"
+                required
+                value={form.startDate}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    startDate: event.target.value,
+                  }))
+                }
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950"
+              />
+            </div>
+
+            {/* End */}
+
+            <div>
+              <label className="mb-2 block text-sm font-semibold">
+                End Date & Time <span className="text-red-500">*</span>
+              </label>
+
+              <input
+                type="datetime-local"
+                required
+                value={form.endDate}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    endDate: event.target.value,
+                  }))
+                }
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950"
+              />
+            </div>
+
+            {/* Notes */}
+
+            <div className="sm:col-span-2">
+              <label className="mb-2 block text-sm font-semibold">
+                Notes{" "}
+                <span className="font-normal text-slate-400">(optional)</span>
+              </label>
+
+              <textarea
+                rows={4}
+                maxLength={2000}
+                value={form.notes}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    notes: event.target.value,
+                  }))
+                }
+                placeholder="Add any additional information about your request..."
+                className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:placeholder:text-slate-600"
+              />
+            </div>
+          </div>
+
+          {/* Footer */}
+
+          <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={loading}
+              className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              Cancel
+            </button>
+
+            <button
+              type="submit"
+              disabled={loading || Boolean(success)}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loading && <Spinner />}
+
+              {loading
+                ? "Submitting..."
+                : success
+                  ? "Request Submitted"
+                  : "Submit Request"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </ModalBackdrop>
   );
 }
 
@@ -891,6 +1436,7 @@ function VehicleDetailsModal({
     <ModalBackdrop onClose={onClose}>
       <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900">
         {/* Header */}
+
         <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5 dark:border-slate-800">
           <div>
             <div className="flex items-center gap-3">
@@ -944,6 +1490,7 @@ function VehicleDetailsModal({
 
         <div className="p-6">
           {/* Status */}
+
           <div className="mb-6 flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/50">
             <div>
               <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
@@ -969,6 +1516,7 @@ function VehicleDetailsModal({
           </div>
 
           {/* Vehicle Information */}
+
           <div>
             <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Vehicle Information
@@ -1023,6 +1571,7 @@ function VehicleDetailsModal({
           </div>
 
           {/* Location */}
+
           <div className="mt-7">
             <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Location
@@ -1044,6 +1593,7 @@ function VehicleDetailsModal({
           </div>
 
           {/* Purchase */}
+
           <div className="mt-7">
             <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Purchase Information
@@ -1067,6 +1617,7 @@ function VehicleDetailsModal({
           </div>
 
           {/* Insurance */}
+
           <div className="mt-7">
             <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Insurance
@@ -1091,6 +1642,7 @@ function VehicleDetailsModal({
           </div>
 
           {/* Notes */}
+
           <div className="mt-7">
             <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Notes
@@ -1141,9 +1693,10 @@ function AddVehicleModal({
   });
 
   const [saving, setSaving] = useState(false);
+
   const [error, setError] = useState("");
 
-  const handleSubmit = async (event: React.FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
 
     try {
@@ -1372,9 +1925,10 @@ function EditVehicleModal({
   });
 
   const [saving, setSaving] = useState(false);
+
   const [error, setError] = useState("");
 
-  const handleSubmit = async (event: React.FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
 
     try {
@@ -1570,6 +2124,7 @@ function EditVehicleModal({
               className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {saving && <Spinner />}
+
               {saving ? "Saving..." : "Save Changes"}
             </button>
           </div>
@@ -1676,7 +2231,7 @@ function ModalBackdrop({
   children,
   onClose,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
   onClose: () => void;
 }) {
   return (
