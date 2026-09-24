@@ -49,7 +49,14 @@ const getJwtSecret = (): string => {
 const generateToken = (user: IUser): string => {
   const secret = getJwtSecret();
 
-  const expiresIn = process.env.JWT_EXPIRES_IN || "1d";
+  console.log(
+    "🔐 AUTH JWT SECRET CHECK:",
+    secret.length,
+    secret.slice(0, 3),
+    secret.slice(-3),
+  );
+
+  const expiresIn = process.env.JWT_EXPIRES_IN || "7d";
 
   return jwt.sign(
     {
@@ -116,6 +123,13 @@ export const registerUser = async (
     });
 
     const token = generateToken(user);
+
+    console.log(
+      "🔑 AUTH TOKEN:",
+      token.slice(0, 20) + "...",
+      "length:",
+      token.length,
+    );
 
     return {
       user: sanitizeUser(user),

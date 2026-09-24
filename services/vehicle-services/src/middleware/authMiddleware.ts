@@ -49,6 +49,12 @@ export async function authenticate(
     }
 
     const token = authorization.substring(7).trim();
+    console.log(
+      "🔑 VEHICLE TOKEN:",
+      token.slice(0, 20) + "...",
+      "length:",
+      token.length,
+    );
 
     if (!token) {
       return reply.status(401).send({
