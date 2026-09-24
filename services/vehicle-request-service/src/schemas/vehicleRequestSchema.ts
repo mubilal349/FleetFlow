@@ -40,3 +40,11 @@ export const rejectVehicleRequestSchema = z.object({
     .min(3, "Rejection reason is required.")
     .max(1000),
 });
+
+export const listVehicleRequestsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+
+  limit: z.coerce.number().int().min(1).max(100).default(10),
+
+  status: z.enum(["pending", "approved", "rejected", "cancelled"]).optional(),
+});

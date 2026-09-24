@@ -10,6 +10,7 @@ import { useSidebar } from "@/context/SidebarContext";
 type IconName =
   | "dashboard"
   | "vehicles"
+  | "vehicle-requests"
   | "drivers"
   | "trips"
   | "dispatch"
@@ -38,6 +39,11 @@ const mainNavigation: NavItem[] = [
     label: "Vehicles",
     href: "/vehicles",
     icon: "vehicles",
+  },
+  {
+    label: "Vehicle Requests",
+    href: "/vehicle-request",
+    icon: "vehicle-requests",
   },
   {
     label: "Drivers",
@@ -133,6 +139,17 @@ function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
           <path d="M4 11h16" />
           <circle cx="8" cy="17" r="2" />
           <circle cx="16" cy="17" r="2" />
+        </svg>
+      );
+
+    case "vehicle-requests":
+      return (
+        <svg {...common}>
+          <path d="M6 3h9l4 4v14H6z" />
+          <path d="M14 3v5h5" />
+          <path d="M9 13h5" />
+          <path d="M9 16h3" />
+          <path d="m15 17 1.5 1.5L20 15" />
         </svg>
       );
 

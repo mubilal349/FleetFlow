@@ -1,17 +1,45 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 
+import { ZodError } from "zod";
+
 import {
   createVehicleRequestSchema,
+  listVehicleRequestsQuerySchema,
+  rejectVehicleRequestSchema,
   vehicleRequestIdParamsSchema,
 } from "../schemas/vehicleRequestSchema.js";
 
 import {
+  approveVehicleRequestService,
   cancelVehicleRequestService,
   createVehicleRequestService,
   getCustomerRequestService,
   getCustomerRequestsService,
+  getOrganizationRequestsService,
+  rejectVehicleRequestService,
 } from "../services/vehicleRequestService.js";
 
+function handleControllerError(reply: FastifyReply, error: unknown) {
+  if (error instanceof ZodError) {
+    return reply.status(400).send({
+      success: false,
+      message: "Validation failed.",
+      errors: error.issues,
+    });
+  }
+
+  const message =
+    error instanceof Error ? error.message : "An unexpected error occurred.";
+
+  return reply.status(400).send({
+    success: false,
+    message,
+  });
+}
+
+/**
+ * Customer creates a vehicle request.
+ */
 export async function createVehicleRequestController(
   request: FastifyRequest,
   reply: FastifyReply,
@@ -19,66 +47,56 @@ export async function createVehicleRequestController(
   try {
     const body = createVehicleRequestSchema.parse(request.body);
 
-    const authorization = request.headers.authorization;
+    const token = request.headers.authorization?.replace("Bearer ", "") || "";
 
-    if (!authorization) {
-      return reply.status(401).send({
-        success: false,
-        message: "Authentication required.",
-      });
-    }
-
-    const vehicleRequest = await createVehicleRequestService(
+    const result = await createVehicleRequestService(
       {
         organizationId: request.user.organizationId,
+
         customerId: request.user.userId,
-        ...body,
+
+        vehicleId: body.vehicleId,
+
+        purpose: body.purpose,
+
+        pickupLocation: body.pickupLocation,
+
+        destination: body.destination,
+
+        startDate: body.startDate,
+
+        endDate: body.endDate,
+
+        notes: body.notes,
       },
-      authorization.substring(7).trim(),
+      token,
     );
 
     return reply.status(201).send({
       success: true,
       message: "Vehicle request submitted successfully.",
-      data: vehicleRequest,
+      data: result,
     });
-  } catch (error: any) {
-    request.log.error(
-      {
-        error,
-      },
-      "Failed to create vehicle request",
-    );
-
-    return reply.status(400).send({
-      success: false,
-      message:
-        error?.issues?.[0]?.message ||
-        error?.message ||
-        "Failed to create vehicle request.",
-    });
+  } catch (error) {
+    return handleControllerError(reply, error);
   }
 }
 
+/**
+ * Customer gets their own requests.
+ */
 export async function getCustomerRequestsController(
   request: FastifyRequest,
   reply: FastifyReply,
 ) {
   try {
-    const query = request.query as {
-      page?: string;
-      limit?: string;
-    };
-
-    const page = Math.max(1, Number(query.page || 1));
-
-    const limit = Math.min(100, Math.max(1, Number(query.limit || 10)));
+    const query = listVehicleRequestsQuerySchema.parse(request.query);
 
     const result = await getCustomerRequestsService(
       request.user.organizationId,
       request.user.userId,
-      page,
-      limit,
+      query.page,
+      query.limit,
     );
 
     return reply.send({
@@ -87,29 +105,50 @@ export async function getCustomerRequestsController(
       data: result,
     });
   } catch (error) {
-    request.log.error(
-      {
-        error,
-      },
-      "Failed to retrieve customer requests",
-    );
-
-    return reply.status(500).send({
-      success: false,
-      message: "Failed to retrieve vehicle requests.",
-    });
+    return handleControllerError(reply, error);
   }
 }
 
+/**
+ * Admin/Manager gets all requests
+ * belonging to their organization.
+ */
+export async function getOrganizationRequestsController(
+  request: FastifyRequest,
+  reply: FastifyReply,
+) {
+  try {
+    const query = listVehicleRequestsQuerySchema.parse(request.query);
+
+    const result = await getOrganizationRequestsService(
+      request.user.organizationId,
+      query.page,
+      query.limit,
+      query.status,
+    );
+
+    return reply.send({
+      success: true,
+      message: "Vehicle requests retrieved successfully.",
+      data: result,
+    });
+  } catch (error) {
+    return handleControllerError(reply, error);
+  }
+}
+
+/**
+ * Customer gets one of their own requests.
+ */
 export async function getCustomerRequestController(
   request: FastifyRequest,
   reply: FastifyReply,
 ) {
   try {
-    const { id } = vehicleRequestIdParamsSchema.parse(request.params);
+    const params = vehicleRequestIdParamsSchema.parse(request.params);
 
-    const vehicleRequest = await getCustomerRequestService(
-      id,
+    const result = await getCustomerRequestService(
+      params.id,
       request.user.organizationId,
       request.user.userId,
     );
@@ -117,25 +156,25 @@ export async function getCustomerRequestController(
     return reply.send({
       success: true,
       message: "Vehicle request retrieved successfully.",
-      data: vehicleRequest,
+      data: result,
     });
-  } catch (error: any) {
-    return reply.status(404).send({
-      success: false,
-      message: error?.message || "Vehicle request not found.",
-    });
+  } catch (error) {
+    return handleControllerError(reply, error);
   }
 }
 
+/**
+ * Customer cancels a pending request.
+ */
 export async function cancelVehicleRequestController(
   request: FastifyRequest,
   reply: FastifyReply,
 ) {
   try {
-    const { id } = vehicleRequestIdParamsSchema.parse(request.params);
+    const params = vehicleRequestIdParamsSchema.parse(request.params);
 
-    const vehicleRequest = await cancelVehicleRequestService(
-      id,
+    const result = await cancelVehicleRequestService(
+      params.id,
       request.user.organizationId,
       request.user.userId,
     );
@@ -143,16 +182,64 @@ export async function cancelVehicleRequestController(
     return reply.send({
       success: true,
       message: "Vehicle request cancelled successfully.",
-      data: vehicleRequest,
+      data: result,
     });
-  } catch (error: any) {
-    const message = error?.message || "Failed to cancel vehicle request.";
+  } catch (error) {
+    return handleControllerError(reply, error);
+  }
+}
 
-    const status = message === "Vehicle request not found." ? 404 : 400;
+/**
+ * Admin/Manager approves a pending request.
+ */
+export async function approveVehicleRequestController(
+  request: FastifyRequest,
+  reply: FastifyReply,
+) {
+  try {
+    const params = vehicleRequestIdParamsSchema.parse(request.params);
 
-    return reply.status(status).send({
-      success: false,
-      message,
+    const result = await approveVehicleRequestService(
+      params.id,
+      request.user.organizationId,
+      request.user.userId,
+    );
+
+    return reply.send({
+      success: true,
+      message: "Vehicle request approved successfully.",
+      data: result,
     });
+  } catch (error) {
+    return handleControllerError(reply, error);
+  }
+}
+
+/**
+ * Admin/Manager rejects a pending request.
+ */
+export async function rejectVehicleRequestController(
+  request: FastifyRequest,
+  reply: FastifyReply,
+) {
+  try {
+    const params = vehicleRequestIdParamsSchema.parse(request.params);
+
+    const body = rejectVehicleRequestSchema.parse(request.body);
+
+    const result = await rejectVehicleRequestService(
+      params.id,
+      request.user.organizationId,
+      request.user.userId,
+      body.rejectionReason,
+    );
+
+    return reply.send({
+      success: true,
+      message: "Vehicle request rejected successfully.",
+      data: result,
+    });
+  } catch (error) {
+    return handleControllerError(reply, error);
   }
 }

@@ -46,6 +46,49 @@ export async function findCustomerRequests(
   };
 }
 
+/**
+ * Find all requests belonging to an organization.
+ *
+ * Used by admin and manager users.
+ */
+export async function findOrganizationRequests(
+  organizationId: string,
+  page: number,
+  limit: number,
+  status?: VehicleRequestStatus,
+) {
+  const skip = (page - 1) * limit;
+
+  const filter: {
+    organizationId: string;
+    status?: VehicleRequestStatus;
+  } = {
+    organizationId,
+  };
+
+  if (status) {
+    filter.status = status;
+  }
+
+  const [requests, total] = await Promise.all([
+    VehicleRequestModel.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+
+    VehicleRequestModel.countDocuments(filter),
+  ]);
+
+  return {
+    requests,
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
+  };
+}
+
 export async function updateVehicleRequestStatus(
   id: string,
   status: VehicleRequestStatus,
@@ -74,5 +117,21 @@ export async function findRequestForCustomer(
     _id: id,
     organizationId,
     customerId,
+  }).lean();
+}
+
+/**
+ * Find a request while also enforcing organization ownership.
+ *
+ * This prevents an admin/manager from another organization
+ * approving or rejecting someone else's request.
+ */
+export async function findRequestForOrganization(
+  id: string,
+  organizationId: string,
+) {
+  return VehicleRequestModel.findOne({
+    _id: id,
+    organizationId,
   }).lean();
 }

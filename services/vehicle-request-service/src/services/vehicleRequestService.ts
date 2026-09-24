@@ -1,7 +1,9 @@
 import {
   createVehicleRequest,
   findCustomerRequests,
+  findOrganizationRequests,
   findRequestForCustomer,
+  findRequestForOrganization,
   updateVehicleRequestStatus,
 } from "../repositories/vehicleRequestRepository.js";
 
@@ -77,14 +79,23 @@ export async function createVehicleRequestService(
 
   const request = await createVehicleRequest({
     organizationId: input.organizationId,
+
     customerId: input.customerId,
+
     vehicleId: input.vehicleId,
+
     purpose: input.purpose,
+
     pickupLocation: input.pickupLocation,
+
     destination: input.destination,
+
     startDate: input.startDate,
+
     endDate: input.endDate,
+
     notes: input.notes,
+
     status: "pending",
   });
 
@@ -98,6 +109,15 @@ export async function getCustomerRequestsService(
   limit: number,
 ) {
   return findCustomerRequests(organizationId, customerId, page, limit);
+}
+
+export async function getOrganizationRequestsService(
+  organizationId: string,
+  page: number,
+  limit: number,
+  status?: "pending" | "approved" | "rejected" | "cancelled",
+) {
+  return findOrganizationRequests(organizationId, page, limit, status);
 }
 
 export async function getCustomerRequestService(
@@ -130,4 +150,59 @@ export async function cancelVehicleRequestService(
   }
 
   return updateVehicleRequestStatus(id, "cancelled");
+}
+
+/**
+ * Approve a vehicle request.
+ *
+ * Only pending requests can be approved.
+ */
+export async function approveVehicleRequestService(
+  id: string,
+  organizationId: string,
+  reviewerId: string,
+) {
+  const request = await findRequestForOrganization(id, organizationId);
+
+  if (!request) {
+    throw new Error("Vehicle request not found.");
+  }
+
+  if (request.status !== "pending") {
+    throw new Error("Only pending requests can be approved.");
+  }
+
+  return updateVehicleRequestStatus(id, "approved", {
+    reviewedBy: reviewerId,
+    reviewedAt: new Date(),
+    rejectionReason: undefined,
+  });
+}
+
+/**
+ * Reject a vehicle request.
+ *
+ * Only pending requests can be rejected.
+ */
+export async function rejectVehicleRequestService(
+  id: string,
+  organizationId: string,
+  reviewerId: string,
+  rejectionReason: string,
+) {
+  const request = await findRequestForOrganization(id, organizationId);
+
+  if (!request) {
+    throw new Error("Vehicle request not found.");
+  }
+
+  if (request.status !== "pending") {
+    throw new Error("Only pending requests can be rejected.");
+  }
+
+  return updateVehicleRequestStatus(id, "rejected", {
+    reviewedBy: reviewerId,
+    reviewedAt: new Date(),
+    rejectionReason: rejectionReason.trim(),
+  });
 }
