@@ -24,5 +24,8 @@
     "typescript"
   ],
   "author": "Muhammad Bilal",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "lucide-react": "^1.48.0"
+  }
 }

@@ -4,6 +4,7 @@ import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { SidebarProvider } from "@/context/SidebarContext";
+import BackToTop from "../components/common/BackToTop";
 
 export const metadata: Metadata = {
   title: "FleetFlow",
@@ -21,6 +22,7 @@ export default function RootLayout({
         <ThemeProvider>
           <AuthProvider>
             <SidebarProvider>{children}</SidebarProvider>
+            <BackToTop />
           </AuthProvider>
         </ThemeProvider>
       </body>
