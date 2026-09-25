@@ -4,7 +4,7 @@ import jwt, { type JwtPayload } from "jsonwebtoken";
 import type { UserRole } from "../models/User.js";
 
 interface AccessTokenPayload extends JwtPayload {
-  userId: string;
+  id: string;
   email: string;
   role: UserRole;
   organizationId: string;
@@ -53,7 +53,7 @@ export const authenticate = async (
     const decoded = jwt.verify(token, getJwtSecret()) as AccessTokenPayload;
 
     if (
-      !decoded.userId ||
+      !decoded.id ||
       !decoded.email ||
       !decoded.role ||
       !decoded.organizationId
@@ -65,12 +65,14 @@ export const authenticate = async (
     }
 
     request.user = {
-      userId: decoded.userId,
+      id: decoded.id,
       email: decoded.email,
       role: decoded.role,
       organizationId: decoded.organizationId,
     };
-  } catch {
+  } catch (error) {
+    console.error("AUTHENTICATION FAILED:", error);
+
     return reply.code(401).send({
       success: false,
       message: "Invalid or expired authentication token.",

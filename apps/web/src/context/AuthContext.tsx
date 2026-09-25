@@ -19,6 +19,14 @@ interface User {
   role: UserRole;
 }
 
+interface BackendUser {
+  id?: string;
+  _id?: string;
+  name: string;
+  email: string;
+  role: UserRole;
+}
+
 interface LoginData {
   email: string;
   password: string;
@@ -40,6 +48,21 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+const normalizeUser = (backendUser: BackendUser): User => {
+  const id = backendUser.id ?? backendUser._id;
+
+  if (!id) {
+    throw new Error("Authenticated user ID is missing.");
+  }
+
+  return {
+    id: String(id),
+    name: backendUser.name,
+    email: backendUser.email,
+    role: backendUser.role,
+  };
+};
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -56,8 +79,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const response = await api.get("/api/auth/me");
 
-        setUser(response.data.data.user);
-      } catch {
+        const backendUser = response.data.data.user;
+
+        const normalizedUser = normalizeUser(backendUser);
+
+        console.log("RESTORED AUTH USER:", normalizedUser);
+
+        setUser(normalizedUser);
+      } catch (error) {
+        console.error("FAILED TO RESTORE SESSION:", error);
+
         localStorage.removeItem("fleetflow_token");
         setUser(null);
       } finally {
@@ -68,25 +99,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     restoreSession();
   }, []);
 
-  // -------------------------
-  // LOGIN
-  // -------------------------
-
   const login = async ({ email, password }: LoginData): Promise<void> => {
     const response = await api.post("/api/auth/login", {
       email,
       password,
     });
 
-    const { token, user } = response.data.data;
+    const { token, user: backendUser } = response.data.data;
+
+    const normalizedUser = normalizeUser(backendUser);
+
+    console.log("LOGIN AUTH USER:", normalizedUser);
 
     localStorage.setItem("fleetflow_token", token);
-    setUser(user);
-  };
 
-  // -------------------------
-  // REGISTER
-  // -------------------------
+    setUser(normalizedUser);
+  };
 
   const register = async ({
     name,
@@ -99,15 +127,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       password,
     });
 
-    const { token, user } = response.data.data;
+    const { token, user: backendUser } = response.data.data;
+
+    const normalizedUser = normalizeUser(backendUser);
+
+    console.log("REGISTER AUTH USER:", normalizedUser);
 
     localStorage.setItem("fleetflow_token", token);
-    setUser(user);
-  };
 
-  // -------------------------
-  // LOGOUT
-  // -------------------------
+    setUser(normalizedUser);
+  };
 
   const logout = (): void => {
     localStorage.removeItem("fleetflow_token");

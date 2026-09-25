@@ -1,0 +1,25 @@
+{
+  "name": "fleetflow-vehicleService-service",
+  "version": "1.0.0",
+  "description": "Vehicle maintenance and service management microservice for FleetFlow",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.0.1",
+    "@fastify/helmet": "^13.0.2",
+    "@fastify/jwt": "^10.2.2",
+    "dotenv": "^17.2.2",
+    "fastify": "^5.6.0",
+    "mongoose": "^8.18.0",
+    "zod": "^4.1.8"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  }
+}

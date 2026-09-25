@@ -60,7 +60,7 @@ const generateToken = (user: IUser): string => {
 
   return jwt.sign(
     {
-      userId: user._id.toString(),
+      id: user._id.toString(),
       email: user.email,
       role: user.role,
       organizationId: user.organizationId,

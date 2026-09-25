@@ -11,6 +11,7 @@ type IconName =
   | "dashboard"
   | "vehicles"
   | "vehicle-requests"
+  | "vehicle-service"
   | "drivers"
   | "trips"
   | "dispatch"
@@ -36,16 +37,6 @@ const mainNavigation: NavItem[] = [
     icon: "dashboard",
   },
   {
-    label: "Vehicles",
-    href: "/vehicles",
-    icon: "vehicles",
-  },
-  {
-    label: "Vehicle Requests",
-    href: "/vehicle-request",
-    icon: "vehicle-requests",
-  },
-  {
     label: "Drivers",
     href: "/drivers",
     icon: "drivers",
@@ -64,6 +55,24 @@ const mainNavigation: NavItem[] = [
     label: "Live Tracking",
     href: "/tracking",
     icon: "tracking",
+  },
+];
+
+const vehicleNavigation: NavItem[] = [
+  {
+    label: "Fleet Inventory",
+    href: "/vehicles",
+    icon: "vehicles",
+  },
+  {
+    label: "Vehicle Requests",
+    href: "/vehicle-request",
+    icon: "vehicle-requests",
+  },
+  {
+    label: "Vehicle Service",
+    href: "/vehicles/service",
+    icon: "vehicle-service",
   },
 ];
 
@@ -150,6 +159,13 @@ function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
           <path d="M9 13h5" />
           <path d="M9 16h3" />
           <path d="m15 17 1.5 1.5L20 15" />
+        </svg>
+      );
+
+    case "vehicle-service":
+      return (
+        <svg {...common}>
+          <path d="M14.7 6.3a4 4 0 0 0-5.2 5.2L4 17l3 3 5.5-5.5a4 4 0 0 0 5.2-5.2l-2.3 2.3-2.5-.5-.5-2.5Z" />
         </svg>
       );
 
@@ -319,9 +335,26 @@ export default function DashboardSidebar() {
 
   const [avatar, setAvatar] = useState("");
 
+  const vehicleSectionActive =
+    pathname === "/vehicles" ||
+    pathname.startsWith("/vehicles/") ||
+    pathname === "/vehicle-request" ||
+    pathname.startsWith("/vehicle-request/") ||
+    pathname === "/dashboard/vehicles/service" ||
+    pathname.startsWith("/dashboard/vehicles/service/");
+
+  const [vehiclesOpen, setVehiclesOpen] = useState(vehicleSectionActive);
+
+  useEffect(() => {
+    if (vehicleSectionActive) {
+      setVehiclesOpen(true);
+    }
+  }, [vehicleSectionActive]);
+
   useEffect(() => {
     const loadAvatar = () => {
       const savedAvatar = localStorage.getItem("fleetflow_avatar");
+
       setAvatar(savedAvatar || "");
     };
 
@@ -421,7 +454,7 @@ export default function DashboardSidebar() {
             ×
           </button>
 
-          {/* Desktop collapse / expand button */}
+          {/* Desktop collapse / expand */}
           <button
             type="button"
             onClick={toggleSidebar}
@@ -457,6 +490,106 @@ export default function DashboardSidebar() {
             onNavigate={closeMobile}
             collapsed={collapsed}
           />
+
+          {/* Vehicles dropdown */}
+          {!collapsed ? (
+            <div className="mb-7">
+              <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+                Fleet
+              </p>
+
+              <button
+                type="button"
+                onClick={() => setVehiclesOpen((current) => !current)}
+                className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
+                  vehicleSectionActive
+                    ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-white/[0.05] dark:hover:text-white"
+                }`}
+              >
+                <span className="shrink-0 transition-transform duration-200 group-hover:scale-110">
+                  <Icon name="vehicles" size={19} />
+                </span>
+
+                <span>Vehicles</span>
+
+                <svg
+                  className={`ml-auto h-4 w-4 transition-transform duration-200 ${
+                    vehiclesOpen ? "rotate-180" : ""
+                  }`}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
+
+              <div
+                className={`grid transition-all duration-300 ${
+                  vehiclesOpen
+                    ? "mt-1 grid-rows-[1fr] opacity-100"
+                    : "grid-rows-[0fr] opacity-0"
+                }`}
+              >
+                <div className="overflow-hidden">
+                  <div className="ml-4 border-l border-slate-200 pl-3 dark:border-white/10">
+                    {vehicleNavigation.map((item) => {
+                      const active =
+                        pathname === item.href ||
+                        pathname.startsWith(`${item.href}/`);
+
+                      return (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          onClick={closeMobile}
+                          className={`group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium transition-all duration-200 ${
+                            active
+                              ? "bg-blue-600/10 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400"
+                              : "text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/[0.04] dark:hover:text-white"
+                          }`}
+                        >
+                          <span
+                            className={`h-1.5 w-1.5 shrink-0 rounded-full transition-all ${
+                              active
+                                ? "bg-blue-600 dark:bg-blue-400"
+                                : "bg-slate-300 group-hover:bg-slate-500 dark:bg-slate-600 dark:group-hover:bg-slate-400"
+                            }`}
+                          />
+
+                          <Icon name={item.icon} size={16} />
+
+                          <span>{item.label}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Collapsed Vehicles */
+            <div className="mb-7">
+              <Link
+                href="/vehicles"
+                onClick={closeMobile}
+                title="Vehicles"
+                className={`group flex items-center justify-center rounded-xl py-2.5 text-sm font-medium transition-all duration-200 ${
+                  vehicleSectionActive
+                    ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-white/[0.05] dark:hover:text-white"
+                }`}
+              >
+                <span className="transition-transform duration-200 group-hover:scale-110">
+                  <Icon name="vehicles" size={19} />
+                </span>
+              </Link>
+            </div>
+          )}
 
           <NavigationSection
             title="Operations"
