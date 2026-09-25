@@ -117,6 +117,53 @@ class ServiceController {
   }
 
   /**
+   * Get service history for a specific vehicle
+   * GET /services/vehicle/:vehicleId
+   */
+  async getServiceHistoryByVehicle(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ) {
+    try {
+      const params = request.params as {
+        vehicleId?: string;
+      };
+
+      const vehicleId = params.vehicleId?.trim();
+
+      if (!vehicleId) {
+        return reply.status(400).send({
+          success: false,
+          message: "Vehicle ID is required",
+        });
+      }
+
+      const services =
+        await serviceService.getServiceHistoryByVehicle(vehicleId);
+
+      return reply.status(200).send({
+        success: true,
+        message: "Vehicle service history fetched successfully",
+        data: services,
+      });
+    } catch (error) {
+      if (error instanceof ServiceServiceError) {
+        return reply.status(error.statusCode).send({
+          success: false,
+          message: error.message,
+        });
+      }
+
+      request.log.error(error);
+
+      return reply.status(500).send({
+        success: false,
+        message: "Failed to fetch vehicle service history",
+      });
+    }
+  }
+
+  /**
    * Get one service record
    * GET /services/:id
    */

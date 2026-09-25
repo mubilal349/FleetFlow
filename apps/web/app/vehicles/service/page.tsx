@@ -726,6 +726,7 @@ export default function VehicleServicePage() {
                             key={service._id}
                             className="transition hover:bg-zinc-50/70 dark:hover:bg-white/[0.02]"
                           >
+                            {/* Vehicle */}
                             <td className="px-6 py-5">
                               <div className="flex items-center gap-3">
                                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
@@ -744,36 +745,41 @@ export default function VehicleServicePage() {
                               </div>
                             </td>
 
+                            {/* Service Type */}
                             <td className="px-6 py-5">
                               <p className="text-sm font-semibold">
                                 {serviceTypeLabels[service.serviceType]}
                               </p>
                             </td>
 
-                            <td className="px-6 py-5">
-                              <p className="text-sm font-medium">
+                            {/* Service Date */}
+                            <td className="min-w-[170px] px-6 py-5 whitespace-nowrap">
+                              <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
                                 {formatDate(service.serviceDate)}
                               </p>
 
                               {service.nextServiceDate && (
-                                <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                                <p className="mt-1 whitespace-nowrap text-xs text-zinc-500 dark:text-zinc-400">
                                   Next: {formatDate(service.nextServiceDate)}
                                 </p>
                               )}
                             </td>
 
+                            {/* Mileage */}
                             <td className="px-6 py-5">
                               <p className="text-sm font-medium">
                                 {service.mileage?.toLocaleString("en-PK")} km
                               </p>
                             </td>
 
+                            {/* Cost */}
                             <td className="px-6 py-5">
                               <p className="text-sm font-semibold">
                                 {formatCurrency(service.cost)}
                               </p>
                             </td>
 
+                            {/* Status */}
                             <td className="px-6 py-5">
                               <span
                                 className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-semibold ${getStatusClasses(
@@ -786,14 +792,27 @@ export default function VehicleServicePage() {
                               </span>
                             </td>
 
-                            <td className="px-6 py-5 text-right">
-                              <Link
-                                href={`/vehicles/service/${service._id}`}
-                                className="inline-flex h-9 items-center gap-2 rounded-lg border border-zinc-200 px-3 text-xs font-semibold transition hover:border-blue-500 hover:text-blue-600 dark:border-white/10 dark:hover:text-blue-400"
-                              >
-                                <Eye className="h-3.5 w-3.5" />
-                                View
-                              </Link>
+                            {/* Actions */}
+                            <td className="w-[260px] px-6 py-5 text-right whitespace-nowrap">
+                              <div className="flex items-center justify-end gap-2">
+                                {/* View Service */}
+                                <Link
+                                  href={`/vehicles/service/${service._id}`}
+                                  className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-semibold text-zinc-700 transition hover:border-blue-500 hover:text-blue-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-zinc-300 dark:hover:text-blue-400"
+                                >
+                                  <Eye className="h-3.5 w-3.5 shrink-0" />
+                                  <span>View</span>
+                                </Link>
+
+                                {/* Service History */}
+                                <Link
+                                  href={`/vehicles/service/vehicle/${service.vehicleId}`}
+                                  className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-semibold text-zinc-700 transition hover:border-blue-500/30 hover:text-blue-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-zinc-300 dark:hover:text-blue-400"
+                                >
+                                  <Clock3 className="h-3.5 w-3.5 shrink-0" />
+                                  <span>Service History</span>
+                                </Link>
+                              </div>
                             </td>
                           </tr>
                         ))}

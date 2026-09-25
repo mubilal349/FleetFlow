@@ -30,6 +30,12 @@ export default async function serviceRoutes(
     serviceController.getServices.bind(serviceController),
   );
 
+  app.get(
+    "/vehicle/:vehicleId",
+    { preHandler: authenticate },
+    serviceController.getServiceHistoryByVehicle.bind(serviceController),
+  );
+
   /**
    * Get service by ID
    * GET /services/:id

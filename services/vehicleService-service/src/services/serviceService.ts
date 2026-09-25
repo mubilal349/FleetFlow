@@ -91,6 +91,19 @@ class ServiceService {
   }
 
   /**
+   * Get service history for a specific vehicle
+   */
+  async getServiceHistoryByVehicle(vehicleId: string) {
+    if (!vehicleId) {
+      throw new ServiceServiceError("Vehicle ID is required", 400);
+    }
+
+    return serviceRepository.findAll({
+      vehicleId,
+    });
+  }
+
+  /**
    * Get one service record
    */
   async getServiceById(id: string): Promise<IService> {

@@ -6,14 +6,14 @@ import { env } from "../config/env.js";
 export type UserRole = "admin" | "manager" | "driver" | "customer";
 
 export interface AuthenticatedUser {
-  userId: string;
+  id: string;
   email: string;
   role: UserRole;
   organizationId: string;
 }
 
 interface AccessTokenPayload extends JwtPayload {
-  userId: string;
+  id: string;
   email: string;
   role: UserRole;
   organizationId: string;
@@ -50,6 +50,13 @@ export async function authenticate(
 
     const token = authorization.substring(7).trim();
 
+    console.log(
+      "🔑 VEHICLE TOKEN:",
+      token.slice(0, 20) + "...",
+      "length:",
+      token.length,
+    );
+
     if (!token) {
       return reply.status(401).send({
         success: false,
@@ -60,8 +67,15 @@ export async function authenticate(
 
     const decoded = jwt.verify(token, env.JWT_SECRET) as AccessTokenPayload;
 
+    console.log("🔐 DECODED VEHICLE TOKEN:", {
+      id: decoded.id,
+      email: decoded.email,
+      role: decoded.role,
+      organizationId: decoded.organizationId,
+    });
+
     if (
-      !decoded.userId ||
+      !decoded.id ||
       !decoded.email ||
       !decoded.role ||
       !decoded.organizationId
@@ -74,7 +88,7 @@ export async function authenticate(
     }
 
     request.user = {
-      userId: decoded.userId,
+      id: decoded.id,
       email: decoded.email,
       role: decoded.role,
       organizationId: decoded.organizationId,
