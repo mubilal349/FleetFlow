@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 
@@ -787,14 +788,13 @@ export default function VehiclesPage() {
 
                             {/* View */}
 
-                            <button
-                              type="button"
-                              onClick={() => setSelectedVehicle(vehicle)}
+                            <Link
+                              href={`/vehicles/${vehicle._id}`}
                               title="View vehicle"
                               className="rounded-lg px-3 py-2 text-sm font-semibold text-blue-600 transition hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/30"
                             >
                               View
-                            </button>
+                            </Link>
 
                             {/* Admin / Manager Actions */}
 
