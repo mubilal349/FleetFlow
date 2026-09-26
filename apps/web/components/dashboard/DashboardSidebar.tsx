@@ -22,6 +22,7 @@ type IconName =
   | "documents"
   | "analytics"
   | "audit"
+  | "vehicles-assignment"
   | "settings";
 
 interface NavItem {
@@ -63,6 +64,11 @@ const vehicleNavigation: NavItem[] = [
     label: "Fleet Inventory",
     href: "/vehicles",
     icon: "vehicles",
+  },
+  {
+    label: "Vehicle Assignments",
+    href: "/vehicles/assignments",
+    icon: "vehicles-assignment",
   },
   {
     label: "Vehicle Requests",
@@ -148,6 +154,18 @@ function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
           <path d="M4 11h16" />
           <circle cx="8" cy="17" r="2" />
           <circle cx="16" cy="17" r="2" />
+        </svg>
+      );
+    case "vehicles-assignment":
+      return (
+        <svg {...common}>
+          <path d="M5 17h14" />
+          <path d="M6 17V9l2-4h8l2 4v8" />
+          <path d="M4 11h16" />
+          <circle cx="8" cy="17" r="2" />
+          <circle cx="16" cy="17" r="2" />
+          <path d="M12 8v5" />
+          <path d="m10 11 2 2 2-2" />
         </svg>
       );
 
