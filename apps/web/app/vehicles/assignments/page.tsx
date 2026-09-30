@@ -210,6 +210,28 @@ export default function VehicleAssignmentsPage() {
 
   const [totalAssignments, setTotalAssignments] = useState(0);
 
+  /*
+   * ============================================================
+   * ASSIGNMENT HISTORY STATE
+   * ============================================================
+   */
+
+  const [history, setHistory] = useState<Assignment[]>([]);
+
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const [historyError, setHistoryError] = useState("");
+
+  const [historyFilter, setHistoryFilter] = useState<
+    "all" | "completed" | "cancelled"
+  >("all");
+
+  const [historyPage, setHistoryPage] = useState(1);
+
+  const [historyTotalPages, setHistoryTotalPages] = useState(1);
+
+  const [historyTotal, setHistoryTotal] = useState(0);
+
   const [modal, setModal] = useState<ModalType>(null);
 
   const [selectedAssignment, setSelectedAssignment] =
@@ -240,6 +262,20 @@ export default function VehicleAssignmentsPage() {
 
   const canManageAssignments =
     user?.role === "admin" || user?.role === "manager";
+
+  /**
+   * Get vehicle from currently loaded vehicles.
+   */
+  function getVehicle(vehicleId: string) {
+    return vehicles.find((vehicle) => vehicle._id === vehicleId);
+  }
+
+  /**
+   * Get driver from currently loaded drivers.
+   */
+  function getDriver(driverId: string) {
+    return drivers.find((driver) => driver._id === driverId);
+  }
 
   /**
    * Load assignment records.
@@ -281,6 +317,55 @@ export default function VehicleAssignmentsPage() {
       );
     } finally {
       setLoading(false);
+    }
+  }
+
+  /**
+   * Load assignment history.
+   *
+   * This intentionally stays on the same Vehicle Assignments page.
+   *
+   * All       -> all assignment records
+   * Completed -> completed assignments
+   * Cancelled -> cancelled assignments
+   */
+  async function loadHistory() {
+    try {
+      setHistoryLoading(true);
+      setHistoryError("");
+
+      const params = new URLSearchParams();
+
+      params.set("page", String(historyPage));
+      params.set("limit", String(PAGE_SIZE));
+
+      if (historyFilter !== "all") {
+        params.set("status", historyFilter);
+      }
+
+      const response = await api.get(`/api/assignments?${params.toString()}`);
+
+      const result = response.data as ApiResponse<Assignment[]>;
+
+      if (!result.success) {
+        throw new Error(result.message || "Failed to load assignment history.");
+      }
+
+      setHistory(result.data || []);
+
+      setHistoryTotal(result.pagination?.total || 0);
+
+      setHistoryTotalPages(Math.max(1, result.pagination?.totalPages || 1));
+    } catch (err) {
+      console.error("Failed to load assignment history:", err);
+
+      setHistoryError(
+        err instanceof Error
+          ? err.message
+          : "Failed to load assignment history.",
+      );
+    } finally {
+      setHistoryLoading(false);
     }
   }
 
@@ -412,6 +497,10 @@ export default function VehicleAssignmentsPage() {
   }, [page, statusFilter]);
 
   useEffect(() => {
+    void loadHistory();
+  }, [historyPage, historyFilter]);
+
+  useEffect(() => {
     void loadOptions();
   }, []);
 
@@ -529,10 +618,6 @@ export default function VehicleAssignmentsPage() {
     } catch (err) {
       console.error("Failed to load assignment details:", err);
 
-      /*
-       * We keep the assignment already available in the table
-       * so the modal can still display useful information.
-       */
       setError(
         err instanceof Error
           ? err.message
@@ -615,7 +700,7 @@ export default function VehicleAssignmentsPage() {
 
       setSuccess("Vehicle assigned successfully.");
 
-      await Promise.all([loadAssignments(), loadOptions()]);
+      await Promise.all([loadAssignments(), loadHistory(), loadOptions()]);
     } catch (err) {
       console.error("Failed to assign vehicle:", err);
 
@@ -675,7 +760,7 @@ export default function VehicleAssignmentsPage() {
 
       setSuccess("Vehicle assignment completed successfully.");
 
-      await Promise.all([loadAssignments(), loadOptions()]);
+      await Promise.all([loadAssignments(), loadHistory(), loadOptions()]);
     } catch (err) {
       console.error("Failed to complete assignment:", err);
 
@@ -720,7 +805,7 @@ export default function VehicleAssignmentsPage() {
 
       setSuccess("Vehicle assignment cancelled successfully.");
 
-      await Promise.all([loadAssignments(), loadOptions()]);
+      await Promise.all([loadAssignments(), loadHistory(), loadOptions()]);
     } catch (err) {
       console.error("Failed to cancel assignment:", err);
 
@@ -730,14 +815,6 @@ export default function VehicleAssignmentsPage() {
     } finally {
       setSubmitting(false);
     }
-  }
-
-  function getVehicle(vehicleId: string) {
-    return vehicles.find((vehicle) => vehicle._id === vehicleId);
-  }
-
-  function getDriver(driverId: string) {
-    return drivers.find((driver) => driver._id === driverId);
   }
 
   const viewedAssignment = viewAssignment;
@@ -796,7 +873,11 @@ export default function VehicleAssignmentsPage() {
                   <button
                     type="button"
                     onClick={() => {
-                      void Promise.all([loadAssignments(), loadOptions()]);
+                      void Promise.all([
+                        loadAssignments(),
+                        loadHistory(),
+                        loadOptions(),
+                      ]);
                     }}
                     className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50 sm:flex-none dark:border-white/10 dark:bg-white/[0.04] dark:text-zinc-200 dark:hover:bg-white/[0.07]"
                   >
@@ -1109,7 +1190,6 @@ export default function VehicleAssignmentsPage() {
 
                               <td className="px-4 py-5 sm:px-6">
                                 <div className="flex justify-end gap-2">
-                                  {/* View */}
                                   <button
                                     type="button"
                                     onClick={() => openViewModal(assignment)}
@@ -1119,7 +1199,6 @@ export default function VehicleAssignmentsPage() {
                                     View
                                   </button>
 
-                                  {/* Manage */}
                                   {canManageAssignments &&
                                     assignment.status === "active" && (
                                       <>
@@ -1199,6 +1278,337 @@ export default function VehicleAssignmentsPage() {
                 </>
               )}
             </section>
+
+            {/* ========================================================= */}
+            {/* ASSIGNMENT HISTORY */}
+            {/* ========================================================= */}
+            <section className="mt-6 overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
+              {/* History Header */}
+              <div className="border-b border-zinc-200 px-4 py-4 sm:px-6 dark:border-white/10">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-zinc-100 text-zinc-600 dark:bg-white/[0.06] dark:text-zinc-300">
+                      <ClipboardList className="h-5 w-5" />
+                    </div>
+
+                    <div>
+                      <h2 className="text-lg font-bold">Assignment History</h2>
+
+                      <p className="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
+                        Review previous vehicle assignment records.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void loadHistory();
+                    }}
+                    disabled={historyLoading}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-white/[0.03] dark:text-zinc-200 dark:hover:bg-white/[0.06]"
+                  >
+                    <RefreshCw
+                      className={`h-4 w-4 ${
+                        historyLoading ? "animate-spin" : ""
+                      }`}
+                    />
+                    Refresh History
+                  </button>
+                </div>
+
+                {/* History Tabs */}
+                <div className="mt-5 flex flex-wrap gap-2">
+                  {[
+                    {
+                      value: "all",
+                      label: "All",
+                    },
+                    {
+                      value: "completed",
+                      label: "Completed",
+                    },
+                    {
+                      value: "cancelled",
+                      label: "Cancelled",
+                    },
+                  ].map((tab) => {
+                    const active = historyFilter === tab.value;
+
+                    return (
+                      <button
+                        key={tab.value}
+                        type="button"
+                        onClick={() => {
+                          setHistoryFilter(
+                            tab.value as "all" | "completed" | "cancelled",
+                          );
+
+                          setHistoryPage(1);
+                        }}
+                        className={`inline-flex h-9 items-center rounded-lg px-4 text-xs font-semibold transition ${
+                          active
+                            ? "bg-blue-600 text-white shadow-sm"
+                            : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-white/[0.05] dark:text-zinc-300 dark:hover:bg-white/[0.08]"
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* History Error */}
+              {historyError && (
+                <div className="mx-4 mt-4 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 sm:mx-6 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+
+                  <span className="min-w-0 flex-1">{historyError}</span>
+
+                  <button
+                    type="button"
+                    onClick={() => setHistoryError("")}
+                    className="shrink-0 rounded-lg p-1 transition hover:bg-red-500/10"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
+
+              {/* History Content */}
+              {historyLoading ? (
+                <div className="flex min-h-[300px] items-center justify-center px-6">
+                  <div className="flex items-center gap-3 text-sm text-zinc-500 dark:text-zinc-400">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    Loading assignment history...
+                  </div>
+                </div>
+              ) : history.length === 0 ? (
+                <div className="flex min-h-[300px] flex-col items-center justify-center px-6 text-center">
+                  <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-100 text-zinc-500 dark:bg-white/[0.06] dark:text-zinc-400">
+                    <ClipboardList className="h-6 w-6" />
+                  </div>
+
+                  <h3 className="text-base font-semibold">
+                    No assignment history found
+                  </h3>
+
+                  <p className="mt-1 max-w-md text-sm text-zinc-500 dark:text-zinc-400">
+                    There are no{" "}
+                    {historyFilter === "all" ? "" : `${historyFilter} `}
+                    assignment records to display.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* History Table */}
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[950px] text-left">
+                      <thead>
+                        <tr className="border-b border-zinc-200 bg-zinc-50/80 dark:border-white/10 dark:bg-white/[0.02]">
+                          <th className="px-4 py-4 text-xs font-semibold uppercase tracking-wider text-zinc-500 sm:px-6 dark:text-zinc-400">
+                            Vehicle
+                          </th>
+
+                          <th className="px-4 py-4 text-xs font-semibold uppercase tracking-wider text-zinc-500 sm:px-6 dark:text-zinc-400">
+                            Driver
+                          </th>
+
+                          <th className="px-4 py-4 text-xs font-semibold uppercase tracking-wider text-zinc-500 sm:px-6 dark:text-zinc-400">
+                            Assigned
+                          </th>
+
+                          <th className="px-4 py-4 text-xs font-semibold uppercase tracking-wider text-zinc-500 sm:px-6 dark:text-zinc-400">
+                            Returned
+                          </th>
+
+                          <th className="px-4 py-4 text-xs font-semibold uppercase tracking-wider text-zinc-500 sm:px-6 dark:text-zinc-400">
+                            Mileage
+                          </th>
+
+                          <th className="px-4 py-4 text-xs font-semibold uppercase tracking-wider text-zinc-500 sm:px-6 dark:text-zinc-400">
+                            Status
+                          </th>
+
+                          <th className="px-4 py-4 text-right text-xs font-semibold uppercase tracking-wider text-zinc-500 sm:px-6 dark:text-zinc-400">
+                            Action
+                          </th>
+                        </tr>
+                      </thead>
+
+                      <tbody className="divide-y divide-zinc-100 dark:divide-white/5">
+                        {history.map((assignment) => {
+                          const vehicle = getVehicle(assignment.vehicleId);
+
+                          const driver = getDriver(assignment.driverId);
+
+                          return (
+                            <tr
+                              key={assignment._id}
+                              className="transition hover:bg-zinc-50/70 dark:hover:bg-white/[0.025]"
+                            >
+                              {/* Vehicle */}
+                              <td className="px-4 py-5 sm:px-6">
+                                <div className="flex items-center gap-3">
+                                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400">
+                                    <Truck className="h-4 w-4" />
+                                  </div>
+
+                                  <div className="min-w-0">
+                                    <p className="max-w-[180px] truncate text-sm font-semibold">
+                                      {getVehicleName(vehicle)}
+                                    </p>
+
+                                    <p className="mt-0.5 max-w-[180px] truncate text-xs text-zinc-500 dark:text-zinc-400">
+                                      {vehicle?.registrationNumber ||
+                                        assignment.vehicleId}
+                                    </p>
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* Driver */}
+                              <td className="px-4 py-5 sm:px-6">
+                                <div className="flex items-center gap-3">
+                                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-600 dark:bg-white/[0.06] dark:text-zinc-300">
+                                    <UserRound className="h-4 w-4" />
+                                  </div>
+
+                                  <div className="min-w-0">
+                                    <p className="max-w-[170px] truncate text-sm font-medium">
+                                      {getDriverName(driver)}
+                                    </p>
+
+                                    {driver?.email && (
+                                      <p className="mt-0.5 max-w-[170px] truncate text-xs text-zinc-500 dark:text-zinc-400">
+                                        {driver.email}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* Assigned */}
+                              <td className="px-4 py-5 sm:px-6">
+                                <div className="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
+                                  <CalendarDays className="h-4 w-4 shrink-0 text-zinc-400" />
+
+                                  <span className="whitespace-nowrap">
+                                    {formatDate(assignment.assignedAt)}
+                                  </span>
+                                </div>
+
+                                <p className="mt-1 whitespace-nowrap text-xs text-zinc-500 dark:text-zinc-400">
+                                  {formatDateTime(assignment.assignedAt)}
+                                </p>
+                              </td>
+
+                              {/* Returned */}
+                              <td className="px-4 py-5 sm:px-6">
+                                <span className="whitespace-nowrap text-sm text-zinc-700 dark:text-zinc-300">
+                                  {formatDate(assignment.returnedAt)}
+                                </span>
+
+                                {assignment.returnedAt && (
+                                  <p className="mt-1 whitespace-nowrap text-xs text-zinc-500 dark:text-zinc-400">
+                                    {formatDateTime(assignment.returnedAt)}
+                                  </p>
+                                )}
+                              </td>
+
+                              {/* Mileage */}
+                              <td className="px-4 py-5 sm:px-6">
+                                <div className="text-sm">
+                                  <p className="whitespace-nowrap font-medium">
+                                    {formatMileage(assignment.startingMileage)}
+                                  </p>
+
+                                  <p className="mt-1 whitespace-nowrap text-xs text-zinc-500 dark:text-zinc-400">
+                                    End:{" "}
+                                    {formatMileage(assignment.endingMileage)}
+                                  </p>
+                                </div>
+                              </td>
+
+                              {/* Status */}
+                              <td className="px-4 py-5 sm:px-6">
+                                <span
+                                  className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${statusStyles[assignment.status]}`}
+                                >
+                                  {getStatusLabel(assignment.status)}
+                                </span>
+                              </td>
+
+                              {/* View */}
+                              <td className="px-4 py-5 sm:px-6">
+                                <div className="flex justify-end">
+                                  <button
+                                    type="button"
+                                    onClick={() => openViewModal(assignment)}
+                                    className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-blue-50 px-3 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 dark:bg-blue-500/10 dark:text-blue-400 dark:hover:bg-blue-500/15"
+                                  >
+                                    <Eye className="h-3.5 w-3.5" />
+                                    View
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* History Pagination */}
+                  <div className="flex flex-col gap-3 border-t border-zinc-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 dark:border-white/10">
+                    <p className="text-xs text-zinc-500 sm:text-sm dark:text-zinc-400">
+                      Showing{" "}
+                      <span className="font-semibold text-zinc-700 dark:text-zinc-200">
+                        {history.length}
+                      </span>{" "}
+                      of{" "}
+                      <span className="font-semibold text-zinc-700 dark:text-zinc-200">
+                        {historyTotal}
+                      </span>{" "}
+                      records
+                    </p>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={historyPage <= 1}
+                        onClick={() =>
+                          setHistoryPage((current) => Math.max(1, current - 1))
+                        }
+                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-white/[0.03] dark:text-zinc-300 dark:hover:bg-white/[0.06]"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                        Previous
+                      </button>
+
+                      <span className="px-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                        {historyPage} / {historyTotalPages}
+                      </span>
+
+                      <button
+                        type="button"
+                        disabled={historyPage >= historyTotalPages}
+                        onClick={() =>
+                          setHistoryPage((current) =>
+                            Math.min(historyTotalPages, current + 1),
+                          )
+                        }
+                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-white/[0.03] dark:text-zinc-300 dark:hover:bg-white/[0.06]"
+                      >
+                        Next
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </section>
           </div>
         </main>
       </div>
@@ -1209,7 +1619,6 @@ export default function VehicleAssignmentsPage() {
       {modal === "view" && viewedAssignment && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/60 p-3 backdrop-blur-sm sm:p-5">
           <div className="my-auto w-full max-w-3xl overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#0b1324]">
-            {/* Header */}
             <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-4 sm:px-6 dark:border-white/10">
               <div className="flex min-w-0 items-center gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400">
@@ -1762,7 +2171,7 @@ export default function VehicleAssignmentsPage() {
                 <h2 className="text-lg font-bold">Complete Assignment</h2>
 
                 <p className="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
-                  Record the vehicle's return mileage.
+                  Record the vehicle&apos;s return mileage.
                 </p>
               </div>
 

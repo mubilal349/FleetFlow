@@ -601,3 +601,90 @@ export async function getDriverAssignmentHistoryController(
     return handleError(reply, error);
   }
 }
+
+/**
+ * Get assignment history.
+ *
+ * History contains only assignments that are no longer active:
+ * - completed
+ * - cancelled
+ *
+ * Supports:
+ * - completed/cancelled status filter
+ * - vehicleId
+ * - driverId
+ * - search
+ * - pagination
+ */
+export async function getAssignmentHistoryController(
+  request: FastifyRequest,
+  reply: FastifyReply,
+) {
+  try {
+    const user = getAuthenticatedUser(request);
+
+    const query = listVehicleAssignmentsQuerySchema.parse(request.query);
+
+    const filter: Record<string, unknown> = {
+      organizationId: user.organizationId,
+      status: {
+        $in: ["completed", "cancelled"],
+      },
+    };
+
+    /**
+     * Allow the frontend to request
+     * a specific history status.
+     */
+    if (query.status) {
+      if (query.status !== "completed" && query.status !== "cancelled") {
+        return reply.status(400).send({
+          success: false,
+          message: "History status must be completed or cancelled.",
+          code: "INVALID_HISTORY_STATUS",
+        });
+      }
+
+      filter.status = query.status;
+    }
+
+    if (query.vehicleId) {
+      filter.vehicleId = query.vehicleId;
+    }
+
+    if (query.driverId) {
+      filter.driverId = query.driverId;
+    }
+
+    const skip = (query.page - 1) * query.limit;
+
+    const [assignments, total] = await Promise.all([
+      VehicleAssignment.find(filter)
+        .sort({
+          returnedAt: -1,
+          assignedAt: -1,
+        })
+        .skip(skip)
+        .limit(query.limit)
+        .lean(),
+
+      VehicleAssignment.countDocuments(filter),
+    ]);
+
+    return reply.status(200).send({
+      success: true,
+      message: "Assignment history retrieved successfully.",
+      data: assignments,
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.ceil(total / query.limit),
+      },
+    });
+  } catch (error) {
+    request.log.error({ error }, "Failed to get assignment history");
+
+    return handleError(reply, error);
+  }
+}

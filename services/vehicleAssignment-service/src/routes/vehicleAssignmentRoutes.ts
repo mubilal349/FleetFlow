@@ -6,6 +6,7 @@ import {
   cancelVehicleAssignmentController,
   completeVehicleAssignmentController,
   createVehicleAssignmentController,
+  getAssignmentHistoryController,
   getDriverAssignmentHistoryController,
   getVehicleAssignmentController,
   getVehicleAssignmentHistoryController,
@@ -31,6 +32,20 @@ export async function vehicleAssignmentRoutes(app: FastifyInstance) {
       preHandler: [authenticate],
     },
     getVehicleAssignmentsController,
+  );
+
+  // Get assignment history
+  // Completed and cancelled assignments
+  // All authenticated users
+  //
+  // Keep this BEFORE /assignments/:id
+  // because "history" could otherwise be treated as an assignment ID.
+  app.get(
+    "/assignments/history",
+    {
+      preHandler: [authenticate],
+    },
+    getAssignmentHistoryController,
   );
 
   // Get vehicle assignment history by vehicle
