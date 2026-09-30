@@ -84,6 +84,23 @@ export const buildApp = async () => {
     rewritePrefix: "/assignments",
   });
 
+  // =========================
+  // Inspection Service
+  // =========================
+
+  const inspectionServiceUrl =
+    process.env.INSPECTION_SERVICE_URL || "http://localhost:4006";
+
+  await app.register(proxy, {
+    upstream: inspectionServiceUrl,
+    prefix: "/api/inspections",
+    rewritePrefix: "/inspections",
+  });
+
+  // =========================
+  // Gateway Routes
+  // =========================
+
   console.log("========== API GATEWAY ROUTES ==========");
   console.log(app.printRoutes());
   console.log("========================================");
