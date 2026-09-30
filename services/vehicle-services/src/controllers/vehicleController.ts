@@ -98,7 +98,17 @@ export async function getVehicleController(
   try {
     const { id } = vehicleIdParamsSchema.parse(request.params);
 
+    console.log("🔎 VEHICLE LOOKUP:", {
+      vehicleId: id,
+      organizationId: request.user.organizationId,
+    });
+
     const vehicle = await getVehicleService(id, request.user.organizationId);
+
+    console.log("✅ VEHICLE FOUND:", {
+      vehicleId: vehicle._id,
+      organizationId: vehicle.organizationId,
+    });
 
     return reply.status(200).send({
       success: true,

@@ -28,5 +28,9 @@ export function buildApp() {
 
   app.setErrorHandler(errorHandler);
 
+  console.log("========== VEHICLE ASSIGNMENT ROUTES ==========");
+  console.log(app.printRoutes());
+  console.log("===============================================");
+
   return app;
 }

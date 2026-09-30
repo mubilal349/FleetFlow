@@ -10,6 +10,7 @@ import {
   ChevronRight,
   ClipboardList,
   Clock3,
+  Eye,
   Loader2,
   Plus,
   RefreshCw,
@@ -50,6 +51,7 @@ interface Driver {
   _id: string;
   name?: string;
   email?: string;
+  role?: string;
 }
 
 interface Assignment {
@@ -69,6 +71,12 @@ interface Assignment {
   updatedAt: string;
 }
 
+interface AssignmentDetailResponse extends Assignment {
+  vehicle?: Vehicle;
+  driver?: Driver;
+  assignedByUser?: Driver;
+}
+
 interface ApiResponse<T> {
   success: boolean;
   message?: string;
@@ -81,7 +89,7 @@ interface ApiResponse<T> {
   };
 }
 
-type ModalType = "assign" | "complete" | "cancel" | null;
+type ModalType = "assign" | "view" | "complete" | "cancel" | null;
 
 const PAGE_SIZE = 10;
 
@@ -184,6 +192,8 @@ export default function VehicleAssignmentsPage() {
 
   const [loadingOptions, setLoadingOptions] = useState(true);
 
+  const [viewLoading, setViewLoading] = useState(false);
+
   const [error, setError] = useState("");
 
   const [success, setSuccess] = useState("");
@@ -205,6 +215,13 @@ export default function VehicleAssignmentsPage() {
   const [selectedAssignment, setSelectedAssignment] =
     useState<Assignment | null>(null);
 
+  const [viewAssignment, setViewAssignment] =
+    useState<AssignmentDetailResponse | null>(null);
+
+  const [viewVehicle, setViewVehicle] = useState<Vehicle | null>(null);
+
+  const [viewDriver, setViewDriver] = useState<Driver | null>(null);
+
   const [selectedVehicleId, setSelectedVehicleId] = useState("");
 
   const [selectedDriverId, setSelectedDriverId] = useState("");
@@ -224,6 +241,9 @@ export default function VehicleAssignmentsPage() {
   const canManageAssignments =
     user?.role === "admin" || user?.role === "manager";
 
+  /**
+   * Load assignment records.
+   */
   async function loadAssignments() {
     try {
       setLoading(true);
@@ -232,14 +252,13 @@ export default function VehicleAssignmentsPage() {
       const params = new URLSearchParams();
 
       params.set("page", String(page));
-
       params.set("limit", String(PAGE_SIZE));
 
       if (statusFilter !== "all") {
         params.set("status", statusFilter);
       }
 
-      const response = await api.get(`/assignments?${params.toString()}`);
+      const response = await api.get(`/api/assignments?${params.toString()}`);
 
       const result = response.data as ApiResponse<Assignment[]>;
 
@@ -265,46 +284,124 @@ export default function VehicleAssignmentsPage() {
     }
   }
 
+  /**
+   * Load available vehicles and drivers independently.
+   */
   async function loadOptions() {
+    setLoadingOptions(true);
+
+    let vehiclesLoaded = false;
+    let driversLoaded = false;
+
     try {
-      setLoadingOptions(true);
+      setError("");
 
-      const [vehiclesResponse, driversResponse] = await Promise.all([
-        api.get("/vehicles?status=available&limit=100"),
-        api.get("/users?role=driver&limit=100"),
-      ]);
+      /**
+       * LOAD VEHICLES
+       */
+      try {
+        console.log("🔵 Loading available vehicles...");
 
-      const vehiclesResult = vehiclesResponse.data as ApiResponse<
-        | Vehicle[]
-        | {
-            vehicles?: Vehicle[];
-          }
-      >;
+        const vehiclesResponse = await api.get(
+          "/api/vehicles?status=available&limit=100",
+        );
 
-      const driversResult = driversResponse.data as ApiResponse<
-        | Driver[]
-        | {
-            users?: Driver[];
-          }
-      >;
+        console.log("🟢 FULL VEHICLE RESPONSE:", vehiclesResponse.data);
 
-      const vehicleData = vehiclesResult.data;
+        const result = vehiclesResponse.data;
 
-      if (Array.isArray(vehicleData)) {
-        setVehicles(vehicleData);
-      } else {
-        setVehicles(vehicleData?.vehicles || []);
+        let vehicleList: Vehicle[] = [];
+
+        if (Array.isArray(result?.data)) {
+          vehicleList = result.data;
+        } else if (Array.isArray(result?.data?.vehicles)) {
+          vehicleList = result.data.vehicles;
+        } else if (Array.isArray(result?.data?.data)) {
+          vehicleList = result.data.data;
+        } else if (Array.isArray(result)) {
+          vehicleList = result;
+        }
+
+        console.log("🟢 EXTRACTED VEHICLES:", vehicleList);
+
+        const availableVehicleList = vehicleList.filter(
+          (vehicle) =>
+            String(vehicle.status).trim().toLowerCase() === "available",
+        );
+
+        console.log("🟢 AVAILABLE VEHICLES:", availableVehicleList);
+
+        setVehicles(availableVehicleList);
+
+        vehiclesLoaded = true;
+      } catch (err: any) {
+        console.error(
+          "🔴 Failed to load available vehicles:",
+          err?.response?.data || err,
+        );
+
+        setVehicles([]);
       }
 
-      const driverData = driversResult.data;
+      /**
+       * LOAD DRIVERS
+       */
+      try {
+        console.log("🔵 Loading drivers...");
 
-      if (Array.isArray(driverData)) {
-        setDrivers(driverData);
-      } else {
-        setDrivers(driverData?.users || []);
+        const driversResponse = await api.get(
+          "/api/users?role=driver&limit=100",
+        );
+
+        console.log("🟢 FULL DRIVERS RESPONSE:", driversResponse.data);
+
+        const result = driversResponse.data;
+
+        let driverList: Driver[] = [];
+
+        if (Array.isArray(result?.data)) {
+          driverList = result.data;
+        } else if (Array.isArray(result?.data?.users)) {
+          driverList = result.data.users;
+        } else if (Array.isArray(result?.data?.data)) {
+          driverList = result.data.data;
+        } else if (Array.isArray(result)) {
+          driverList = result;
+        }
+
+        const normalizedDrivers: Driver[] = driverList
+          .map((driver: any) => ({
+            _id: driver._id || driver.id,
+            name: driver.name,
+            email: driver.email,
+            role: driver.role,
+          }))
+          .filter((driver) => driver._id);
+
+        console.log("🟢 EXTRACTED DRIVERS:", normalizedDrivers);
+
+        setDrivers(normalizedDrivers);
+
+        driversLoaded = true;
+      } catch (err: any) {
+        console.error("🔴 Failed to load drivers:", err?.response?.data || err);
+
+        setDrivers([]);
       }
-    } catch (err) {
-      console.error("Failed to load assignment options:", err);
+
+      if (!vehiclesLoaded && !driversLoaded) {
+        setError(
+          "Unable to load assignment options. Please check the API Gateway and service connections.",
+        );
+      } else if (!vehiclesLoaded) {
+        setError(
+          "Available vehicles could not be loaded. Please check the Vehicle Service.",
+        );
+      } else if (!driversLoaded) {
+        console.warn(
+          "⚠️ Vehicles loaded successfully, but drivers could not be loaded.",
+        );
+      }
     } finally {
       setLoadingOptions(false);
     }
@@ -372,6 +469,8 @@ export default function VehicleAssignmentsPage() {
     setError("");
     setSuccess("");
 
+    void loadOptions();
+
     setModal("assign");
   }
 
@@ -382,8 +481,66 @@ export default function VehicleAssignmentsPage() {
 
     setModal(null);
     setSelectedAssignment(null);
+    setViewAssignment(null);
+    setViewVehicle(null);
+    setViewDriver(null);
     setEndingMileage("");
     setActionNotes("");
+    setError("");
+    setViewLoading(false);
+  }
+
+  /**
+   * Open assignment details.
+   *
+   * Uses:
+   * GET /api/assignments/:id
+   *
+   * If the backend only returns IDs, the current
+   * vehicle/driver lists are used as fallback.
+   */
+  async function openViewModal(assignment: Assignment) {
+    setModal("view");
+    setViewLoading(true);
+    setError("");
+
+    setSelectedAssignment(assignment);
+
+    setViewAssignment(assignment);
+    setViewVehicle(getVehicle(assignment.vehicleId) || null);
+    setViewDriver(getDriver(assignment.driverId) || null);
+
+    try {
+      const response = await api.get(`/api/assignments/${assignment._id}`);
+
+      const result = response.data as ApiResponse<AssignmentDetailResponse>;
+
+      if (!result.success || !result.data) {
+        throw new Error(result.message || "Failed to load assignment details.");
+      }
+
+      const detail = result.data;
+
+      setViewAssignment(detail);
+
+      setViewVehicle(detail.vehicle || getVehicle(detail.vehicleId) || null);
+
+      setViewDriver(detail.driver || getDriver(detail.driverId) || null);
+    } catch (err) {
+      console.error("Failed to load assignment details:", err);
+
+      /*
+       * We keep the assignment already available in the table
+       * so the modal can still display useful information.
+       */
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to load assignment details.",
+      );
+    } finally {
+      setViewLoading(false);
+    }
   }
 
   function openCompleteModal(assignment: Assignment) {
@@ -432,17 +589,13 @@ export default function VehicleAssignmentsPage() {
       setSubmitting(true);
       setError("");
 
-      const response = await api.post("/assignments", {
+      const response = await api.post("/api/assignments", {
         vehicleId: selectedVehicleId,
-
         driverId: selectedDriverId,
-
         startingMileage: Number(startingMileage),
-
         expectedReturnDate: expectedReturnDate
           ? new Date(expectedReturnDate).toISOString()
           : null,
-
         ...(notes.trim()
           ? {
               notes: notes.trim(),
@@ -499,7 +652,7 @@ export default function VehicleAssignmentsPage() {
       setError("");
 
       const response = await api.patch(
-        `/assignments/${selectedAssignment._id}/complete`,
+        `/api/assignments/${selectedAssignment._id}/complete`,
         {
           endingMileage: ending,
 
@@ -546,7 +699,7 @@ export default function VehicleAssignmentsPage() {
       setError("");
 
       const response = await api.patch(
-        `/assignments/${selectedAssignment._id}/cancel`,
+        `/api/assignments/${selectedAssignment._id}/cancel`,
         {
           ...(actionNotes.trim()
             ? {
@@ -586,6 +739,17 @@ export default function VehicleAssignmentsPage() {
   function getDriver(driverId: string) {
     return drivers.find((driver) => driver._id === driverId);
   }
+
+  const viewedAssignment = viewAssignment;
+
+  const viewedTotalDistance =
+    viewedAssignment?.endingMileage !== undefined &&
+    viewedAssignment?.endingMileage !== null
+      ? Math.max(
+          0,
+          viewedAssignment.endingMileage - viewedAssignment.startingMileage,
+        )
+      : null;
 
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-950 dark:bg-[#050b18] dark:text-white">
@@ -773,11 +937,8 @@ export default function VehicleAssignmentsPage() {
                   className="h-11 w-full rounded-xl border border-zinc-200 bg-zinc-50 px-4 text-sm font-medium outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 sm:w-48 dark:border-white/10 dark:bg-white/[0.03] dark:text-white"
                 >
                   <option value="all">All Statuses</option>
-
                   <option value="active">Active</option>
-
                   <option value="completed">Completed</option>
-
                   <option value="cancelled">Cancelled</option>
                 </select>
               </div>
@@ -821,7 +982,6 @@ export default function VehicleAssignmentsPage() {
                 </div>
               ) : (
                 <>
-                  {/* Responsive table wrapper */}
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[1050px] text-left">
                       <thead>
@@ -850,11 +1010,9 @@ export default function VehicleAssignmentsPage() {
                             Status
                           </th>
 
-                          {canManageAssignments && (
-                            <th className="px-4 py-4 text-right text-xs font-semibold uppercase tracking-wider text-zinc-500 sm:px-6 dark:text-zinc-400">
-                              Actions
-                            </th>
-                          )}
+                          <th className="px-4 py-4 text-right text-xs font-semibold uppercase tracking-wider text-zinc-500 sm:px-6 dark:text-zinc-400">
+                            Actions
+                          </th>
                         </tr>
                       </thead>
 
@@ -869,7 +1027,6 @@ export default function VehicleAssignmentsPage() {
                               key={assignment._id}
                               className="transition hover:bg-zinc-50/70 dark:hover:bg-white/[0.025]"
                             >
-                              {/* Vehicle */}
                               <td className="px-4 py-5 sm:px-6">
                                 <div className="flex items-center gap-3">
                                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400">
@@ -889,7 +1046,6 @@ export default function VehicleAssignmentsPage() {
                                 </div>
                               </td>
 
-                              {/* Driver */}
                               <td className="px-4 py-5 sm:px-6">
                                 <div className="flex items-center gap-3">
                                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-600 dark:bg-white/[0.06] dark:text-zinc-300">
@@ -910,7 +1066,6 @@ export default function VehicleAssignmentsPage() {
                                 </div>
                               </td>
 
-                              {/* Assigned */}
                               <td className="px-4 py-5 sm:px-6">
                                 <div className="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
                                   <CalendarDays className="h-4 w-4 shrink-0 text-zinc-400" />
@@ -925,14 +1080,12 @@ export default function VehicleAssignmentsPage() {
                                 </p>
                               </td>
 
-                              {/* Expected Return */}
                               <td className="px-4 py-5 sm:px-6">
                                 <span className="whitespace-nowrap text-sm text-zinc-700 dark:text-zinc-300">
                                   {formatDate(assignment.expectedReturnDate)}
                                 </span>
                               </td>
 
-                              {/* Mileage */}
                               <td className="px-4 py-5 sm:px-6">
                                 <div className="text-sm">
                                   <p className="whitespace-nowrap font-medium">
@@ -946,22 +1099,29 @@ export default function VehicleAssignmentsPage() {
                                 </div>
                               </td>
 
-                              {/* Status */}
                               <td className="px-4 py-5 sm:px-6">
                                 <span
-                                  className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${
-                                    statusStyles[assignment.status]
-                                  }`}
+                                  className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${statusStyles[assignment.status]}`}
                                 >
                                   {getStatusLabel(assignment.status)}
                                 </span>
                               </td>
 
-                              {/* Actions */}
-                              {canManageAssignments && (
-                                <td className="px-4 py-5 sm:px-6">
-                                  <div className="flex justify-end gap-2">
-                                    {assignment.status === "active" && (
+                              <td className="px-4 py-5 sm:px-6">
+                                <div className="flex justify-end gap-2">
+                                  {/* View */}
+                                  <button
+                                    type="button"
+                                    onClick={() => openViewModal(assignment)}
+                                    className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-blue-50 px-3 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 dark:bg-blue-500/10 dark:text-blue-400 dark:hover:bg-blue-500/15"
+                                  >
+                                    <Eye className="h-3.5 w-3.5" />
+                                    View
+                                  </button>
+
+                                  {/* Manage */}
+                                  {canManageAssignments &&
+                                    assignment.status === "active" && (
                                       <>
                                         <button
                                           type="button"
@@ -986,15 +1146,8 @@ export default function VehicleAssignmentsPage() {
                                         </button>
                                       </>
                                     )}
-
-                                    {assignment.status !== "active" && (
-                                      <span className="text-xs text-zinc-400 dark:text-zinc-500">
-                                        No actions
-                                      </span>
-                                    )}
-                                  </div>
-                                </td>
-                              )}
+                                </div>
+                              </td>
                             </tr>
                           );
                         })}
@@ -1050,6 +1203,357 @@ export default function VehicleAssignmentsPage() {
         </main>
       </div>
 
+      {/* ========================================================= */}
+      {/* VIEW ASSIGNMENT MODAL */}
+      {/* ========================================================= */}
+      {modal === "view" && viewedAssignment && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/60 p-3 backdrop-blur-sm sm:p-5">
+          <div className="my-auto w-full max-w-3xl overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#0b1324]">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-4 sm:px-6 dark:border-white/10">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400">
+                  <ClipboardList className="h-5 w-5" />
+                </div>
+
+                <div className="min-w-0">
+                  <h2 className="text-lg font-bold">Assignment Details</h2>
+
+                  <p className="mt-0.5 truncate text-xs text-zinc-500 dark:text-zinc-400">
+                    ID: {viewedAssignment._id}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeModal}
+                disabled={viewLoading}
+                className="rounded-xl p-2 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-50 dark:hover:bg-white/[0.06] dark:hover:text-white"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="max-h-[75vh] overflow-y-auto p-5 sm:p-6">
+              {error && (
+                <div className="mb-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+
+                  <span className="min-w-0 flex-1">{error}</span>
+                </div>
+              )}
+
+              {viewLoading && (
+                <div className="mb-5 flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-400">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading latest assignment details...
+                </div>
+              )}
+
+              {/* Status */}
+              <div className="mb-5 flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-white/10 dark:bg-white/[0.03]">
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                    Assignment Status
+                  </p>
+
+                  <span
+                    className={`mt-2 inline-flex items-center rounded-full px-3 py-1.5 text-xs font-semibold ring-1 ring-inset ${statusStyles[viewedAssignment.status]}`}
+                  >
+                    {getStatusLabel(viewedAssignment.status)}
+                  </span>
+                </div>
+
+                <div className="text-left sm:text-right">
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                    Organization
+                  </p>
+
+                  <p className="mt-1 max-w-[260px] truncate text-sm font-medium">
+                    {viewedAssignment.organizationId}
+                  </p>
+                </div>
+              </div>
+
+              {/* Vehicle + Driver */}
+              <div className="grid gap-4 md:grid-cols-2">
+                {/* Vehicle */}
+                <div className="rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-white/[0.02]">
+                  <div className="mb-4 flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400">
+                      <Truck className="h-5 w-5" />
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                        Vehicle
+                      </p>
+
+                      <p className="text-base font-semibold">
+                        {getVehicleName(viewVehicle || undefined)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm text-zinc-500 dark:text-zinc-400">
+                        Registration
+                      </span>
+
+                      <span className="max-w-[180px] truncate text-right text-sm font-medium">
+                        {viewVehicle?.registrationNumber ||
+                          viewedAssignment.vehicleId}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm text-zinc-500 dark:text-zinc-400">
+                        Vehicle Status
+                      </span>
+
+                      <span className="text-right text-sm font-medium capitalize">
+                        {viewVehicle?.status?.replace("_", " ") || "—"}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm text-zinc-500 dark:text-zinc-400">
+                        Vehicle ID
+                      </span>
+
+                      <span className="max-w-[180px] truncate text-right text-xs text-zinc-600 dark:text-zinc-300">
+                        {viewedAssignment.vehicleId}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Driver */}
+                <div className="rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-white/[0.02]">
+                  <div className="mb-4 flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400">
+                      <UserRound className="h-5 w-5" />
+                    </div>
+
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                        Driver
+                      </p>
+
+                      <p className="truncate text-base font-semibold">
+                        {getDriverName(viewDriver || undefined)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm text-zinc-500 dark:text-zinc-400">
+                        Email
+                      </span>
+
+                      <span className="max-w-[200px] truncate text-right text-sm font-medium">
+                        {viewDriver?.email || "—"}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm text-zinc-500 dark:text-zinc-400">
+                        Role
+                      </span>
+
+                      <span className="text-right text-sm font-medium capitalize">
+                        {viewDriver?.role || "Driver"}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm text-zinc-500 dark:text-zinc-400">
+                        Driver ID
+                      </span>
+
+                      <span className="max-w-[180px] truncate text-right text-xs text-zinc-600 dark:text-zinc-300">
+                        {viewedAssignment.driverId}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Timeline / Dates */}
+              <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-white/[0.02]">
+                <div className="mb-4 flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400">
+                    <CalendarDays className="h-5 w-5" />
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                      Assignment Timeline
+                    </p>
+
+                    <p className="text-base font-semibold">Dates & Times</p>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <div>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      Assigned
+                    </p>
+
+                    <p className="mt-1 text-sm font-semibold">
+                      {formatDate(viewedAssignment.assignedAt)}
+                    </p>
+
+                    <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+                      {formatDateTime(viewedAssignment.assignedAt)}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      Expected Return
+                    </p>
+
+                    <p className="mt-1 text-sm font-semibold">
+                      {formatDate(viewedAssignment.expectedReturnDate)}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      Returned
+                    </p>
+
+                    <p className="mt-1 text-sm font-semibold">
+                      {formatDate(viewedAssignment.returnedAt)}
+                    </p>
+
+                    {viewedAssignment.returnedAt && (
+                      <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+                        {formatDateTime(viewedAssignment.returnedAt)}
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      Assigned By
+                    </p>
+
+                    <p className="mt-1 max-w-[180px] truncate text-sm font-semibold">
+                      {viewedAssignment.assignedBy}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Mileage */}
+              <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-white/[0.02]">
+                <div className="mb-4 flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
+                    <Truck className="h-5 w-5" />
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                      Mileage
+                    </p>
+
+                    <p className="text-base font-semibold">Vehicle Usage</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl bg-zinc-50 p-4 dark:bg-white/[0.03]">
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      Starting Mileage
+                    </p>
+
+                    <p className="mt-1 text-lg font-bold">
+                      {formatMileage(viewedAssignment.startingMileage)}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl bg-zinc-50 p-4 dark:bg-white/[0.03]">
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      Ending Mileage
+                    </p>
+
+                    <p className="mt-1 text-lg font-bold">
+                      {formatMileage(viewedAssignment.endingMileage)}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl bg-zinc-50 p-4 dark:bg-white/[0.03]">
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      Distance Travelled
+                    </p>
+
+                    <p className="mt-1 text-lg font-bold">
+                      {viewedTotalDistance !== null
+                        ? formatMileage(viewedTotalDistance)
+                        : "In progress"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-white/[0.02]">
+                <p className="text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                  Assignment Notes
+                </p>
+
+                <div className="mt-2 rounded-xl bg-zinc-50 p-4 text-sm leading-6 text-zinc-700 dark:bg-white/[0.03] dark:text-zinc-300">
+                  {viewedAssignment.notes?.trim()
+                    ? viewedAssignment.notes
+                    : "No notes were added to this assignment."}
+                </div>
+              </div>
+
+              {/* Audit information */}
+              <div className="mt-4 grid gap-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-4 sm:grid-cols-2 dark:border-white/10 dark:bg-white/[0.02]">
+                <div>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                    Created At
+                  </p>
+
+                  <p className="mt-1 text-sm font-medium">
+                    {formatDateTime(viewedAssignment.createdAt)}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                    Last Updated
+                  </p>
+
+                  <p className="mt-1 text-sm font-medium">
+                    {formatDateTime(viewedAssignment.updatedAt)}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex justify-end border-t border-zinc-200 px-5 py-4 dark:border-white/10 sm:px-6">
+              <button
+                type="button"
+                onClick={closeModal}
+                disabled={viewLoading}
+                className="h-11 rounded-xl border border-zinc-200 bg-white px-5 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-50 dark:border-white/10 dark:bg-white/[0.03] dark:text-zinc-200 dark:hover:bg-white/[0.06]"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Assign Modal */}
       {modal === "assign" && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/60 p-3 backdrop-blur-sm sm:p-5">
@@ -1083,7 +1587,6 @@ export default function VehicleAssignmentsPage() {
               )}
 
               <div className="grid gap-5 sm:grid-cols-2">
-                {/* Vehicle */}
                 <div>
                   <label className="mb-2 block text-sm font-semibold">
                     Vehicle
@@ -1095,7 +1598,7 @@ export default function VehicleAssignmentsPage() {
                       setSelectedVehicleId(event.target.value)
                     }
                     disabled={submitting || loadingOptions}
-                    className="h-11 w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-white/[0.03] dark:text-white"
+                    className="h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-zinc-950 dark:text-white"
                   >
                     <option value="">
                       {loadingOptions
@@ -1103,22 +1606,25 @@ export default function VehicleAssignmentsPage() {
                         : "Select vehicle"}
                     </option>
 
-                    {vehicles.map((vehicle) => (
-                      <option key={vehicle._id} value={vehicle._id}>
-                        {vehicle.make} {vehicle.model} —{" "}
-                        {vehicle.registrationNumber}
-                      </option>
-                    ))}
+                    {vehicles
+                      .filter((vehicle) => vehicle.status === "available")
+                      .map((vehicle) => (
+                        <option key={vehicle._id} value={vehicle._id}>
+                          {vehicle.make} {vehicle.model} —{" "}
+                          {vehicle.registrationNumber}
+                        </option>
+                      ))}
                   </select>
 
-                  {!loadingOptions && vehicles.length === 0 && (
-                    <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-                      No available vehicles found.
-                    </p>
-                  )}
+                  {!loadingOptions &&
+                    vehicles.filter((vehicle) => vehicle.status === "available")
+                      .length === 0 && (
+                      <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                        No available vehicles found.
+                      </p>
+                    )}
                 </div>
 
-                {/* Driver */}
                 <div>
                   <label className="mb-2 block text-sm font-semibold">
                     Driver
@@ -1130,7 +1636,7 @@ export default function VehicleAssignmentsPage() {
                       setSelectedDriverId(event.target.value)
                     }
                     disabled={submitting || loadingOptions}
-                    className="h-11 w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-white/[0.03] dark:text-white"
+                    className="h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-zinc-950 dark:text-white"
                   >
                     <option value="">
                       {loadingOptions ? "Loading drivers..." : "Select driver"}
@@ -1145,13 +1651,13 @@ export default function VehicleAssignmentsPage() {
 
                   {!loadingOptions && drivers.length === 0 && (
                     <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-                      No drivers found.
+                      No drivers found. Make sure the Auth Service exposes the
+                      users endpoint.
                     </p>
                   )}
                 </div>
               </div>
 
-              {/* Starting Mileage */}
               <div>
                 <label className="mb-2 block text-sm font-semibold">
                   Starting Mileage
@@ -1175,7 +1681,6 @@ export default function VehicleAssignmentsPage() {
                 </div>
               </div>
 
-              {/* Expected Return */}
               <div>
                 <label className="mb-2 block text-sm font-semibold">
                   Expected Return Date
@@ -1195,7 +1700,6 @@ export default function VehicleAssignmentsPage() {
                 />
               </div>
 
-              {/* Notes */}
               <div>
                 <label className="mb-2 block text-sm font-semibold">
                   Notes
@@ -1219,7 +1723,6 @@ export default function VehicleAssignmentsPage() {
                 </p>
               </div>
 
-              {/* Actions */}
               <div className="flex flex-col-reverse gap-2 border-t border-zinc-200 pt-5 sm:flex-row sm:justify-end dark:border-white/10">
                 <button
                   type="button"
@@ -1232,7 +1735,13 @@ export default function VehicleAssignmentsPage() {
 
                 <button
                   type="submit"
-                  disabled={submitting || loadingOptions}
+                  disabled={
+                    submitting ||
+                    loadingOptions ||
+                    vehicles.filter((vehicle) => vehicle.status === "available")
+                      .length === 0 ||
+                    drivers.length === 0
+                  }
                   className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {submitting && <Loader2 className="h-4 w-4 animate-spin" />}

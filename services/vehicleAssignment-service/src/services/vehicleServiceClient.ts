@@ -40,10 +40,17 @@ async function requestVehicleService(
   token: string,
   options: RequestInit = {},
 ): Promise<VehicleResponse> {
+  const url = `${env.VEHICLE_SERVICE_URL}${path}`;
+
+  console.log("🚗 VEHICLE SERVICE REQUEST:", {
+    url,
+    method: options.method || "GET",
+  });
+
   let response: Response;
 
   try {
-    response = await fetch(`${env.VEHICLE_SERVICE_URL}${path}`, {
+    response = await fetch(url, {
       ...options,
       headers: {
         "Content-Type": "application/json",
@@ -52,6 +59,8 @@ async function requestVehicleService(
       },
     });
   } catch (error) {
+    console.error("❌ VEHICLE SERVICE CONNECTION ERROR:", error);
+
     throw new VehicleServiceClientError(
       "Vehicle Service is unavailable.",
       503,
@@ -64,12 +73,24 @@ async function requestVehicleService(
   try {
     result = (await response.json()) as VehicleResponse;
   } catch {
+    console.error("❌ VEHICLE SERVICE INVALID JSON:", {
+      status: response.status,
+      statusText: response.statusText,
+    });
+
     throw new VehicleServiceClientError(
       "Vehicle Service returned an invalid response.",
       502,
       "INVALID_VEHICLE_SERVICE_RESPONSE",
     );
   }
+
+  console.log("📥 VEHICLE SERVICE RESPONSE:", {
+    url,
+    status: response.status,
+    statusText: response.statusText,
+    result,
+  });
 
   if (!response.ok || !result.success) {
     throw new VehicleServiceClientError(
@@ -81,7 +102,6 @@ async function requestVehicleService(
 
   return result;
 }
-
 export async function getVehicleFromVehicleService(
   vehicleId: string,
   token: string,

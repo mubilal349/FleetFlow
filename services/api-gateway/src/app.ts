@@ -26,6 +26,10 @@ export const buildApp = async () => {
     };
   });
 
+  // =========================
+  // Auth Service
+  // =========================
+
   const authServiceUrl =
     process.env.AUTH_SERVICE_URL || "http://localhost:4001";
 
@@ -34,6 +38,16 @@ export const buildApp = async () => {
     prefix: "/api/auth",
     rewritePrefix: "/auth",
   });
+
+  await app.register(proxy, {
+    upstream: authServiceUrl,
+    prefix: "/api/users",
+    rewritePrefix: "/auth/users",
+  });
+
+  // =========================
+  // Vehicle Service
+  // =========================
 
   const vehicleServiceUrl =
     process.env.VEHICLE_SERVICE_URL || "http://localhost:4002";
@@ -44,6 +58,10 @@ export const buildApp = async () => {
     rewritePrefix: "/vehicles",
   });
 
+  // =========================
+  // Vehicle Request Service
+  // =========================
+
   const vehicleRequestServiceUrl =
     process.env.VEHICLE_REQUEST_SERVICE_URL || "http://localhost:4003";
 
@@ -52,6 +70,23 @@ export const buildApp = async () => {
     prefix: "/api/vehicle-requests",
     rewritePrefix: "/vehicle-requests",
   });
+
+  // =========================
+  // Vehicle Assignment Service
+  // =========================
+
+  const vehicleAssignmentServiceUrl =
+    process.env.VEHICLE_ASSIGNMENT_SERVICE_URL || "http://localhost:4005";
+
+  await app.register(proxy, {
+    upstream: vehicleAssignmentServiceUrl,
+    prefix: "/api/assignments",
+    rewritePrefix: "/assignments",
+  });
+
+  console.log("========== API GATEWAY ROUTES ==========");
+  console.log(app.printRoutes());
+  console.log("========================================");
 
   return app;
 };

@@ -11,10 +11,10 @@ function getRequiredEnv(name: string): string {
 }
 
 export const env = {
-  PORT: Number(process.env.PORT || 4002),
+  PORT: Number(process.env.PORT || 4005),
   HOST: process.env.HOST || "0.0.0.0",
   MONGODB_URI: getRequiredEnv("MONGODB_URI"),
   JWT_SECRET: getRequiredEnv("JWT_SECRET"),
   VEHICLE_SERVICE_URL:
-    process.env.VEHICLE_SERVICE_URL || "http://localhost:4001",
+    process.env.VEHICLE_SERVICE_URL || "http://localhost:4002",
 };

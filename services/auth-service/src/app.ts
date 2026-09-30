@@ -29,5 +29,8 @@ export const buildApp = async () => {
     prefix: "/auth",
   });
 
+  console.log("🔐 AUTH SERVICE ROUTES:");
+  console.log(app.printRoutes());
+
   return app;
 };

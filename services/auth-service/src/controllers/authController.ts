@@ -1,6 +1,10 @@
 import { FastifyReply, FastifyRequest } from "fastify";
 
-import { loginUser, registerUser } from "../services/authService.js";
+import {
+  loginUser,
+  registerUser,
+  getUsers as getUsersService,
+} from "../services/authService.js";
 
 interface RegisterBody {
   name: string;
@@ -11,6 +15,11 @@ interface RegisterBody {
 interface LoginBody {
   email: string;
   password: string;
+}
+
+interface GetUsersQuery {
+  role?: "admin" | "manager" | "driver" | "customer";
+  limit?: string;
 }
 
 export const register = async (
@@ -93,6 +102,60 @@ export const login = async (
     return reply.code(statusCode).send({
       success: false,
       message,
+    });
+  }
+};
+
+export const getUsers = async (
+  request: FastifyRequest<{
+    Querystring: GetUsersQuery;
+  }>,
+  reply: FastifyReply,
+) => {
+  try {
+    const { role, limit } = request.query;
+
+    const organizationId = request.user.organizationId;
+
+    if (!organizationId) {
+      return reply.code(400).send({
+        success: false,
+        message: "User organization is missing.",
+      });
+    }
+
+    const parsedLimit = limit ? Number(limit) : 100;
+
+    if (!Number.isFinite(parsedLimit)) {
+      return reply.code(400).send({
+        success: false,
+        message: "Invalid limit.",
+      });
+    }
+
+    const result = await getUsersService({
+      organizationId,
+      role,
+      limit: parsedLimit,
+    });
+
+    return reply.code(200).send({
+      success: true,
+      message: "Users retrieved successfully.",
+      data: result,
+    });
+  } catch (error) {
+    console.error("🔴 GET USERS CONTROLLER ERROR:", error);
+
+    if (error instanceof Error) {
+      console.error("🔴 MESSAGE:", error.message);
+      console.error("🔴 STACK:", error.stack);
+    }
+
+    return reply.code(500).send({
+      success: false,
+      message:
+        error instanceof Error ? error.message : "Failed to retrieve users.",
     });
   }
 };

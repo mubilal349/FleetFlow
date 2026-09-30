@@ -15,6 +15,12 @@ interface LoginInput {
   password: string;
 }
 
+interface GetUsersInput {
+  organizationId: string;
+  role?: UserRole;
+  limit?: number;
+}
+
 export interface AuthUser {
   id: string;
   name: string;
@@ -191,4 +197,34 @@ export const loginUser = async (input: LoginInput): Promise<AuthResponse> => {
     user: sanitizeUser(user),
     token,
   };
+};
+
+export const getUsers = async (input: GetUsersInput): Promise<AuthUser[]> => {
+  const limit = Math.min(Math.max(input.limit || 100, 1), 100);
+
+  const filter: {
+    organizationId: string;
+    role?: UserRole;
+    isActive?: boolean;
+  } = {
+    organizationId: input.organizationId,
+    isActive: true,
+  };
+
+  if (input.role) {
+    filter.role = input.role;
+  }
+
+  const users = await User.find(filter)
+    .select("_id name email role")
+    .sort({ name: 1 })
+    .limit(limit)
+    .lean();
+
+  return users.map((user) => ({
+    id: user._id.toString(),
+    name: user.name,
+    email: user.email,
+    role: user.role,
+  }));
 };

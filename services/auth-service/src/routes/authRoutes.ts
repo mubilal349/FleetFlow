@@ -1,6 +1,6 @@
-import { FastifyInstance } from "fastify";
+import type { FastifyInstance } from "fastify";
 
-import { login, register } from "../controllers/authController.js";
+import { login, register, getUsers } from "../controllers/authController.js";
 
 import { authenticate } from "../middleware/authMiddleware.js";
 
@@ -23,5 +23,18 @@ export const authRoutes = async (app: FastifyInstance) => {
         },
       };
     },
+  );
+
+  app.get<{
+    Querystring: {
+      role?: "admin" | "manager" | "driver" | "customer";
+      limit?: string;
+    };
+  }>(
+    "/users",
+    {
+      preHandler: authenticate,
+    },
+    getUsers,
   );
 };
