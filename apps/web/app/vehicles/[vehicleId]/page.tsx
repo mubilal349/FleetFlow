@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { FileText } from "lucide-react";
 
 import DashboardHeader from "../../../components/dashboard/DashboardHeader";
 import DashboardSidebar from "../../../components/dashboard/DashboardSidebar";
@@ -336,6 +337,7 @@ export default function VehicleDetailsPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-3">
+                  {/* SERVICE */}
                   <button
                     type="button"
                     onClick={() => {
@@ -356,6 +358,16 @@ export default function VehicleDetailsPage() {
                     Service
                   </button>
 
+                  {/* DOCUMENTS */}
+                  <Link
+                    href={`/vehicles/${vehicle._id}/documents`}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-200 dark:hover:bg-slate-800"
+                  >
+                    <FileText className="h-[17px] w-[17px]" />
+                    Documents
+                  </Link>
+
+                  {/* MANAGE VEHICLE */}
                   <button
                     type="button"
                     onClick={() => {

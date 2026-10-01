@@ -6,6 +6,7 @@ import { env } from "./config/env.js";
 
 import { healthRoutes } from "./routes/healthRoutes.js";
 import { vehicleRoutes } from "./routes/vehicleRoutes.js";
+import vehicleDocumentRoutes from "./routes/vehicleDocumentRoutes.js";
 
 const app = Fastify({
   logger: true,
@@ -22,6 +23,7 @@ async function startServer() {
 
     await app.register(healthRoutes);
     await app.register(vehicleRoutes);
+    await app.register(vehicleDocumentRoutes);
 
     await app.listen({
       port: env.PORT,
