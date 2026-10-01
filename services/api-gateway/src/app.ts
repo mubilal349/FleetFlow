@@ -58,6 +58,13 @@ export const buildApp = async () => {
     rewritePrefix: "/vehicles",
   });
 
+  // Vehicle uploaded files / generated PDFs
+  await app.register(proxy, {
+    upstream: vehicleServiceUrl,
+    prefix: "/uploads",
+    rewritePrefix: "/uploads",
+  });
+
   // =========================
   // Vehicle Request Service
   // =========================

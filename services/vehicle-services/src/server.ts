@@ -1,3 +1,6 @@
+import fastifyStatic from "@fastify/static";
+import path from "node:path";
+
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 
@@ -19,6 +22,11 @@ async function startServer() {
     await app.register(cors, {
       origin: true,
       credentials: true,
+    });
+
+    await app.register(fastifyStatic, {
+      root: path.join(process.cwd(), "uploads"),
+      prefix: "/uploads/",
     });
 
     await app.register(healthRoutes);

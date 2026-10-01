@@ -6,6 +6,7 @@ import {
   Calendar,
   CheckCircle2,
   ClipboardList,
+  Download,
   ExternalLink,
   FileText,
   Loader2,
@@ -16,12 +17,24 @@ import {
   X,
 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type FormEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 import DashboardHeader from "../../../../components/dashboard/DashboardHeader";
 import DashboardSidebar from "../../../../components/dashboard/DashboardSidebar";
 
 import { useSidebar } from "@/context/SidebarContext";
+import { useTheme } from "@/context/ThemeContext";
+
+/* =========================================================
+   TYPES
+========================================================= */
 
 type DocumentType =
   | "registration"
@@ -44,6 +57,7 @@ interface VehicleDocument {
   issueDate?: string;
   expiryDate?: string;
   fileUrl?: string;
+  pdfUrl?: string;
   status: DocumentStatus;
   notes?: string;
   createdAt: string;
@@ -64,11 +78,20 @@ interface DocumentForm {
   documentNumber: string;
   issueDate: string;
   expiryDate: string;
-  fileUrl: string;
   notes: string;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+/* =========================================================
+   API CONFIGURATION
+========================================================= */
+
+const API_BASE_URL = (
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
+).replace(/\/$/, "");
+
+/* =========================================================
+   DOCUMENT TYPES
+========================================================= */
 
 const documentTypes: {
   value: DocumentType;
@@ -104,15 +127,22 @@ const documentTypes: {
   },
 ];
 
+/* =========================================================
+   EMPTY FORM
+========================================================= */
+
 const emptyForm: DocumentForm = {
   documentType: "registration",
   title: "",
   documentNumber: "",
   issueDate: "",
   expiryDate: "",
-  fileUrl: "",
   notes: "",
 };
+
+/* =========================================================
+   HELPERS
+========================================================= */
 
 function getToken(): string | null {
   if (typeof window === "undefined") {
@@ -178,25 +208,96 @@ function getStatusLabel(status: DocumentStatus) {
   }
 }
 
+/**
+ * Converts the backend PDF path into a browser-accessible URL.
+ *
+ * Example:
+ *
+ * /uploads/documents/def-1790842667880.pdf
+ *
+ * becomes:
+ *
+ * http://localhost:4000/uploads/documents/def-1790842667880.pdf
+ *
+ * IMPORTANT:
+ * We use pdfUrl, NOT fileUrl.
+ */
+function getPdfUrl(pdfUrl?: string) {
+  if (!pdfUrl) {
+    return null;
+  }
+
+  if (pdfUrl.startsWith("http://") || pdfUrl.startsWith("https://")) {
+    return pdfUrl;
+  }
+
+  if (pdfUrl.startsWith("file://")) {
+    return null;
+  }
+
+  const normalizedPath = pdfUrl.startsWith("/") ? pdfUrl : `/${pdfUrl}`;
+
+  return `${API_BASE_URL}${normalizedPath}`;
+}
+
+/**
+ * Safely parse JSON responses.
+ */
+async function parseApiResponse<T>(
+  response: Response,
+): Promise<ApiResponse<T>> {
+  const text = await response.text();
+
+  if (!text) {
+    return {
+      success: response.ok,
+    };
+  }
+
+  try {
+    return JSON.parse(text) as ApiResponse<T>;
+  } catch {
+    return {
+      success: false,
+      message: text || `Request failed with status ${response.status}`,
+    };
+  }
+}
+
+/* =========================================================
+   PAGE
+========================================================= */
+
 export default function VehicleDocumentsPage() {
   const { collapsed } = useSidebar();
+
+  /*
+   * FleetFlow's existing theme.
+   *
+   * We don't change the layout or theme.
+   * We only read the current theme so the backend can
+   * generate a PDF using the same dashboard mode.
+   */
+  const { theme } = useTheme();
 
   const params = useParams();
   const router = useRouter();
 
-  /*
-   * IMPORTANT:
-   * The dynamic folder is [vehicleId], so we must use
-   * params.vehicleId instead of params.id.
-   */
   const vehicleId = Array.isArray(params.vehicleId)
     ? params.vehicleId[0]
     : params.vehicleId;
 
   const [documents, setDocuments] = useState<VehicleDocument[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  /*
+   * NEW:
+   * Tracks which document is currently regenerating.
+   */
+  const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -210,9 +311,10 @@ export default function VehicleDocumentsPage() {
     ...emptyForm,
   });
 
-  /*
-   * Fetch documents for the current vehicle.
-   */
+  /* =======================================================
+     FETCH DOCUMENTS
+  ======================================================= */
+
   const fetchDocuments = useCallback(async () => {
     if (!vehicleId) {
       setLoading(false);
@@ -234,12 +336,14 @@ export default function VehicleDocumentsPage() {
         {
           method: "GET",
           headers: {
+            Accept: "application/json",
             Authorization: `Bearer ${token}`,
           },
+          cache: "no-store",
         },
       );
 
-      const result = (await response.json()) as ApiResponse<VehicleDocument>;
+      const result = await parseApiResponse<VehicleDocument>(response);
 
       if (!response.ok || !result.success) {
         throw new Error(
@@ -265,9 +369,10 @@ export default function VehicleDocumentsPage() {
     void fetchDocuments();
   }, [fetchDocuments]);
 
-  /*
-   * Automatically hide success message.
-   */
+  /* =======================================================
+     SUCCESS MESSAGE
+  ======================================================= */
+
   useEffect(() => {
     if (!success) {
       return;
@@ -280,9 +385,10 @@ export default function VehicleDocumentsPage() {
     return () => clearTimeout(timer);
   }, [success]);
 
-  /*
-   * Document statistics.
-   */
+  /* =======================================================
+     STATISTICS
+  ======================================================= */
+
   const stats = useMemo(() => {
     return {
       total: documents.length,
@@ -297,18 +403,20 @@ export default function VehicleDocumentsPage() {
     };
   }, [documents]);
 
-  /*
-   * Reset document form.
-   */
+  /* =======================================================
+     RESET FORM
+  ======================================================= */
+
   const resetForm = () => {
     setForm({
       ...emptyForm,
     });
   };
 
-  /*
-   * Create vehicle document.
-   */
+  /* =======================================================
+     CREATE DOCUMENT
+  ======================================================= */
+
   const handleCreateDocument = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -319,7 +427,7 @@ export default function VehicleDocumentsPage() {
       const token = getToken();
 
       if (!token) {
-        throw new Error("Authentication token not found.");
+        throw new Error("Authentication token not found. Please login again.");
       }
 
       if (!vehicleId) {
@@ -330,43 +438,36 @@ export default function VehicleDocumentsPage() {
         throw new Error("Document title is required.");
       }
 
-      /*
-       * Backend calculates organizationId from the
-       * authenticated user's JWT.
-       *
-       * Do NOT manually send file:// URLs.
-       * fileUrl should be an HTTP/HTTPS URL.
-       */
+      if (form.issueDate && form.expiryDate) {
+        const issueDate = new Date(form.issueDate);
+        const expiryDate = new Date(form.expiryDate);
+
+        if (expiryDate < issueDate) {
+          throw new Error("Expiry date cannot be before issue date.");
+        }
+      }
+
       const payload = {
         vehicleId,
-
         documentType: form.documentType,
-
         title: form.title.trim(),
-
         documentNumber: form.documentNumber.trim() || undefined,
-
         issueDate: form.issueDate || undefined,
-
         expiryDate: form.expiryDate || undefined,
-
-        fileUrl: form.fileUrl.trim() || undefined,
-
         notes: form.notes.trim() || undefined,
       };
 
       const response = await fetch(`${API_BASE_URL}/api/vehicles/documents`, {
         method: "POST",
-
         headers: {
           "Content-Type": "application/json",
+          Accept: "application/json",
           Authorization: `Bearer ${token}`,
         },
-
         body: JSON.stringify(payload),
       });
 
-      const result = (await response.json()) as ApiResponse<VehicleDocument>;
+      const result = await parseApiResponse<VehicleDocument>(response);
 
       if (!response.ok || !result.success) {
         throw new Error(
@@ -376,7 +477,7 @@ export default function VehicleDocumentsPage() {
         );
       }
 
-      setSuccess("Vehicle document created successfully.");
+      setSuccess("Vehicle document created and PDF generated successfully.");
 
       setShowCreateModal(false);
 
@@ -394,9 +495,116 @@ export default function VehicleDocumentsPage() {
     }
   };
 
-  /*
-   * Delete vehicle document.
-   */
+  /* =======================================================
+     REGENERATE PDF
+  ======================================================= */
+
+  const handleRegeneratePdf = async (document: VehicleDocument) => {
+    try {
+      setRegeneratingId(document._id);
+      setError("");
+      setSuccess("");
+
+      const token = getToken();
+
+      if (!token) {
+        throw new Error("Authentication token not found. Please login again.");
+      }
+
+      /*
+       * Use the CURRENT FleetFlow dashboard theme.
+       *
+       * Expected backend value:
+       *
+       * "dark"
+       * "light"
+       */
+      const pdfTheme = theme === "dark" ? "dark" : "light";
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/vehicles/documents/${document._id}/regenerate`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            theme: pdfTheme,
+          }),
+        },
+      );
+
+      const result = await parseApiResponse<VehicleDocument>(response);
+
+      if (!response.ok || !result.success) {
+        throw new Error(
+          result.message ||
+            result.error ||
+            "Failed to regenerate vehicle document PDF.",
+        );
+      }
+
+      /*
+       * Backend should return the updated document.
+       *
+       * We update the existing row immediately so the new
+       * PDF URL is available without changing the layout.
+       */
+      if (result.document) {
+        setDocuments((currentDocuments) =>
+          currentDocuments.map((item) =>
+            item._id === document._id
+              ? {
+                  ...item,
+                  ...result.document,
+                }
+              : item,
+          ),
+        );
+
+        /*
+         * Keep the details modal synchronized too.
+         */
+        setSelectedDocument((current) => {
+          if (!current || current._id !== document._id) {
+            return current;
+          }
+
+          return {
+            ...current,
+            ...result.document,
+          };
+        });
+      } else {
+        /*
+         * If the backend only returns success, fetch the
+         * document list again.
+         */
+        await fetchDocuments();
+      }
+
+      setSuccess(
+        `PDF regenerated successfully using ${
+          pdfTheme === "dark" ? "dark" : "light"
+        } theme.`,
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to regenerate vehicle document PDF.",
+      );
+    } finally {
+      setRegeneratingId(null);
+    }
+  };
+
+  /* =======================================================
+     DELETE DOCUMENT
+  ======================================================= */
+
   const handleDelete = async (document: VehicleDocument) => {
     const confirmed = window.confirm(`Delete "${document.title}" permanently?`);
 
@@ -411,21 +619,21 @@ export default function VehicleDocumentsPage() {
       const token = getToken();
 
       if (!token) {
-        throw new Error("Authentication token not found.");
+        throw new Error("Authentication token not found. Please login again.");
       }
 
       const response = await fetch(
         `${API_BASE_URL}/api/vehicles/documents/${document._id}`,
         {
           method: "DELETE",
-
           headers: {
+            Accept: "application/json",
             Authorization: `Bearer ${token}`,
           },
         },
       );
 
-      const result = (await response.json()) as ApiResponse<VehicleDocument>;
+      const result = await parseApiResponse<VehicleDocument>(response);
 
       if (!response.ok || !result.success) {
         throw new Error(
@@ -436,6 +644,10 @@ export default function VehicleDocumentsPage() {
       }
 
       setSuccess("Vehicle document deleted successfully.");
+
+      if (selectedDocument?._id === document._id) {
+        setSelectedDocument(null);
+      }
 
       await fetchDocuments();
     } catch (err) {
@@ -449,6 +661,10 @@ export default function VehicleDocumentsPage() {
     }
   };
 
+  /* =======================================================
+     RENDER
+  ======================================================= */
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 transition-colors duration-300 dark:bg-[#050816] dark:text-white">
       <DashboardSidebar />
@@ -461,7 +677,8 @@ export default function VehicleDocumentsPage() {
         <DashboardHeader />
 
         <main className="p-4 sm:p-6 lg:p-8">
-          {/* Page Header */}
+          {/* PAGE HEADER */}
+
           <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-3">
               <button
@@ -503,7 +720,8 @@ export default function VehicleDocumentsPage() {
             </button>
           </div>
 
-          {/* Error Alert */}
+          {/* ERROR */}
+
           {error && (
             <div className="mt-6 flex items-start justify-between gap-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
               <div className="flex items-start gap-3">
@@ -522,7 +740,8 @@ export default function VehicleDocumentsPage() {
             </div>
           )}
 
-          {/* Success Alert */}
+          {/* SUCCESS */}
+
           {success && (
             <div className="mt-6 flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-400">
               <CheckCircle2 className="h-[18px] w-[18px]" />
@@ -531,7 +750,8 @@ export default function VehicleDocumentsPage() {
             </div>
           )}
 
-          {/* Statistics */}
+          {/* STATISTICS */}
+
           <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
               label="Total Documents"
@@ -562,9 +782,9 @@ export default function VehicleDocumentsPage() {
             />
           </div>
 
-          {/* Documents Card */}
+          {/* DOCUMENTS CARD */}
+
           <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
-            {/* Toolbar */}
             <div className="border-b border-slate-200 px-4 py-5 dark:border-slate-800 sm:px-6">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -589,7 +809,6 @@ export default function VehicleDocumentsPage() {
               </div>
             </div>
 
-            {/* Loading */}
             {loading ? (
               <div className="flex min-h-[350px] items-center justify-center">
                 <div className="flex items-center gap-3 text-sm text-slate-500 dark:text-slate-400">
@@ -598,7 +817,6 @@ export default function VehicleDocumentsPage() {
                 </div>
               </div>
             ) : documents.length === 0 ? (
-              /* Empty State */
               <div className="px-6 py-16 text-center">
                 <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 dark:bg-slate-800">
                   <FileText className="h-7 w-7" />
@@ -625,9 +843,8 @@ export default function VehicleDocumentsPage() {
                 </button>
               </div>
             ) : (
-              /* Document Table */
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1050px]">
+                <table className="w-full min-w-[1100px]">
                   <thead>
                     <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:bg-slate-950/60 dark:text-slate-400">
                       <th className="px-6 py-4">Document</th>
@@ -647,114 +864,161 @@ export default function VehicleDocumentsPage() {
                   </thead>
 
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {documents.map((document) => (
-                      <tr
-                        key={document._id}
-                        className="transition hover:bg-slate-50 dark:hover:bg-slate-800/40"
-                      >
-                        {/* Document */}
-                        <td className="px-6 py-5">
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400">
-                              <FileText className="h-5 w-5" />
+                    {documents.map((document) => {
+                      const pdfUrl = getPdfUrl(document.pdfUrl);
+
+                      const isRegenerating = regeneratingId === document._id;
+
+                      return (
+                        <tr
+                          key={document._id}
+                          className="transition hover:bg-slate-50 dark:hover:bg-slate-800/40"
+                        >
+                          <td className="px-6 py-5">
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400">
+                                <FileText className="h-5 w-5" />
+                              </div>
+
+                              <div>
+                                <p className="text-sm font-semibold">
+                                  {document.title}
+                                </p>
+
+                                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                                  ID: {document._id.slice(-8)}
+                                </p>
+                              </div>
                             </div>
+                          </td>
 
-                            <div>
-                              <p className="text-sm font-semibold">
-                                {document.title}
-                              </p>
+                          <td className="px-6 py-5">
+                            <span className="text-sm font-medium">
+                              {formatDocumentType(document.documentType)}
+                            </span>
+                          </td>
 
-                              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                                ID: {document._id.slice(-8)}
-                              </p>
+                          <td className="px-6 py-5">
+                            <span className="text-sm text-slate-600 dark:text-slate-300">
+                              {document.documentNumber || "N/A"}
+                            </span>
+                          </td>
+
+                          <td className="px-6 py-5">
+                            <div className="flex items-center gap-2 text-sm">
+                              <Calendar className="h-4 w-4 text-slate-400" />
+
+                              {formatDate(document.issueDate)}
                             </div>
-                          </div>
-                        </td>
+                          </td>
 
-                        {/* Type */}
-                        <td className="px-6 py-5">
-                          <span className="text-sm font-medium">
-                            {formatDocumentType(document.documentType)}
-                          </span>
-                        </td>
+                          <td className="px-6 py-5">
+                            <div className="flex items-center gap-2 text-sm">
+                              <Calendar className="h-4 w-4 text-slate-400" />
 
-                        {/* Number */}
-                        <td className="px-6 py-5">
-                          <span className="text-sm text-slate-600 dark:text-slate-300">
-                            {document.documentNumber || "N/A"}
-                          </span>
-                        </td>
+                              {formatDate(document.expiryDate)}
+                            </div>
+                          </td>
 
-                        {/* Issue Date */}
-                        <td className="px-6 py-5">
-                          <div className="flex items-center gap-2 text-sm">
-                            <Calendar className="h-4 w-4 text-slate-400" />
-
-                            {formatDate(document.issueDate)}
-                          </div>
-                        </td>
-
-                        {/* Expiry Date */}
-                        <td className="px-6 py-5">
-                          <div className="flex items-center gap-2 text-sm">
-                            <Calendar className="h-4 w-4 text-slate-400" />
-
-                            {formatDate(document.expiryDate)}
-                          </div>
-                        </td>
-
-                        {/* Status */}
-                        <td className="px-6 py-5">
-                          <span
-                            className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${getStatusClasses(
-                              document.status,
-                            )}`}
-                          >
-                            {getStatusLabel(document.status)}
-                          </span>
-                        </td>
-
-                        {/* Actions */}
-                        <td className="px-6 py-5">
-                          <div className="flex items-center justify-end gap-1.5">
-                            {document.fileUrl && (
-                              <a
-                                href={document.fileUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                title="View document"
-                                className="rounded-lg p-2 text-blue-600 transition hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/30"
-                              >
-                                <ExternalLink className="h-4 w-4" />
-                              </a>
-                            )}
-
-                            <button
-                              type="button"
-                              title="View details"
-                              onClick={() => setSelectedDocument(document)}
-                              className="rounded-lg p-2 text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                          <td className="px-6 py-5">
+                            <span
+                              className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${getStatusClasses(
+                                document.status,
+                              )}`}
                             >
-                              <ClipboardList className="h-4 w-4" />
-                            </button>
+                              {getStatusLabel(document.status)}
+                            </span>
+                          </td>
 
-                            <button
-                              type="button"
-                              title="Delete document"
-                              disabled={deletingId === document._id}
-                              onClick={() => void handleDelete(document)}
-                              className="rounded-lg p-2 text-red-500 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-red-950/30"
-                            >
-                              {deletingId === document._id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
+                          <td className="px-6 py-5">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {pdfUrl ? (
+                                <>
+                                  {/* VIEW PDF */}
+
+                                  <a
+                                    href={pdfUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    title="View PDF"
+                                    className="rounded-lg p-2 text-blue-600 transition hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/30"
+                                  >
+                                    <ExternalLink className="h-4 w-4" />
+                                  </a>
+
+                                  {/* DOWNLOAD PDF */}
+
+                                  <a
+                                    href={pdfUrl}
+                                    download
+                                    title="Download PDF"
+                                    className="rounded-lg p-2 text-emerald-600 transition hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+                                  >
+                                    <Download className="h-4 w-4" />
+                                  </a>
+                                </>
                               ) : (
-                                <Trash2 className="h-4 w-4" />
+                                <span
+                                  className="px-2 text-xs text-slate-400"
+                                  title="No generated PDF"
+                                >
+                                  No PDF
+                                </span>
                               )}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+
+                              {/* REGENERATE PDF */}
+
+                              <button
+                                type="button"
+                                title={
+                                  isRegenerating
+                                    ? "Regenerating PDF"
+                                    : "Regenerate PDF"
+                                }
+                                disabled={isRegenerating}
+                                onClick={() =>
+                                  void handleRegeneratePdf(document)
+                                }
+                                className="rounded-lg p-2 text-violet-600 transition hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-violet-400 dark:hover:bg-violet-950/30"
+                              >
+                                {isRegenerating ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <RefreshCw className="h-4 w-4" />
+                                )}
+                              </button>
+
+                              {/* VIEW DETAILS */}
+
+                              <button
+                                type="button"
+                                title="View details"
+                                onClick={() => setSelectedDocument(document)}
+                                className="rounded-lg p-2 text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                              >
+                                <ClipboardList className="h-4 w-4" />
+                              </button>
+
+                              {/* DELETE */}
+
+                              <button
+                                type="button"
+                                title="Delete document"
+                                disabled={deletingId === document._id}
+                                onClick={() => void handleDelete(document)}
+                                className="rounded-lg p-2 text-red-500 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-red-950/30"
+                              >
+                                {deletingId === document._id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -763,11 +1027,13 @@ export default function VehicleDocumentsPage() {
         </main>
       </div>
 
-      {/* Add Document Modal */}
+      {/* ===================================================
+          ADD DOCUMENT MODAL
+      =================================================== */}
+
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
           <div className="max-h-[92vh] w-full max-w-3xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900">
-            {/* Modal Header */}
             <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5 dark:border-slate-800">
               <div>
                 <div className="flex items-center gap-3">
@@ -779,7 +1045,8 @@ export default function VehicleDocumentsPage() {
                     <h2 className="text-xl font-bold">Add Vehicle Document</h2>
 
                     <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                      Add a new document for this vehicle.
+                      Enter the document information. FleetFlow will
+                      automatically generate a PDF.
                     </p>
                   </div>
                 </div>
@@ -795,13 +1062,11 @@ export default function VehicleDocumentsPage() {
               </button>
             </div>
 
-            {/* Form */}
             <form
               onSubmit={handleCreateDocument}
               className="max-h-[calc(92vh-82px)] overflow-y-auto"
             >
               <div className="space-y-7 p-6">
-                {/* Basic Information */}
                 <section>
                   <div className="mb-4 flex items-center gap-3">
                     <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-100 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400">
@@ -814,7 +1079,7 @@ export default function VehicleDocumentsPage() {
                       </h3>
 
                       <p className="text-xs text-slate-500 dark:text-slate-400">
-                        Basic document details
+                        Information used to generate the PDF document
                       </p>
                     </div>
                   </div>
@@ -871,26 +1136,6 @@ export default function VehicleDocumentsPage() {
                       />
                     </FormField>
 
-                    <FormField label="File URL">
-                      <input
-                        type="url"
-                        value={form.fileUrl}
-                        onChange={(event) =>
-                          setForm((current) => ({
-                            ...current,
-                            fileUrl: event.target.value,
-                          }))
-                        }
-                        placeholder="https://..."
-                        className={inputClass}
-                      />
-
-                      <p className="mt-1.5 text-xs text-slate-400">
-                        Use an HTTP/HTTPS document URL. Do not use file://
-                        paths.
-                      </p>
-                    </FormField>
-
                     <FormField label="Issue Date">
                       <input
                         type="date"
@@ -921,7 +1166,24 @@ export default function VehicleDocumentsPage() {
                   </div>
                 </section>
 
-                {/* Notes */}
+                <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+                  <div className="flex items-start gap-3">
+                    <FileText className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+
+                    <div>
+                      <p className="text-sm font-bold">
+                        Automatic PDF Generation
+                      </p>
+
+                      <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-400">
+                        When you click <strong>Add Document</strong>, FleetFlow
+                        will save your information and automatically generate a
+                        downloadable PDF document.
+                      </p>
+                    </div>
+                  </div>
+                </section>
+
                 <section>
                   <div className="mb-4 flex items-center gap-2">
                     <FileText className="h-4 w-4 text-slate-400" />
@@ -945,7 +1207,6 @@ export default function VehicleDocumentsPage() {
                   </FormField>
                 </section>
 
-                {/* Automatic Status */}
                 <section className="rounded-2xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900/50 dark:bg-blue-950/20">
                   <div className="flex items-start gap-3">
                     <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-blue-600 dark:text-blue-400" />
@@ -962,7 +1223,6 @@ export default function VehicleDocumentsPage() {
                 </section>
               </div>
 
-              {/* Footer */}
               <div className="flex flex-col-reverse gap-3 border-t border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-950/50 sm:flex-row sm:justify-end">
                 <button
                   type="button"
@@ -980,7 +1240,7 @@ export default function VehicleDocumentsPage() {
                 >
                   {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
 
-                  {submitting ? "Adding Document..." : "Add Document"}
+                  {submitting ? "Generating PDF..." : "Add Document"}
                 </button>
               </div>
             </form>
@@ -988,19 +1248,32 @@ export default function VehicleDocumentsPage() {
         </div>
       )}
 
-      {/* Document Details Modal */}
+      {/* ===================================================
+          DETAILS MODAL
+      =================================================== */}
+
       {selectedDocument && (
         <DocumentDetailsModal
           document={selectedDocument}
           onClose={() => setSelectedDocument(null)}
+          onRegenerate={() => void handleRegeneratePdf(selectedDocument)}
+          regenerating={regeneratingId === selectedDocument._id}
         />
       )}
     </div>
   );
 }
 
+/* =========================================================
+   INPUT STYLE
+========================================================= */
+
 const inputClass =
   "w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950/50 dark:text-white";
+
+/* =========================================================
+   STAT CARD
+========================================================= */
 
 function StatCard({
   label,
@@ -1042,6 +1315,10 @@ function StatCard({
   );
 }
 
+/* =========================================================
+   FORM FIELD
+========================================================= */
+
 function FormField({
   label,
   required,
@@ -1049,7 +1326,7 @@ function FormField({
 }: {
   label: string;
   required?: boolean;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <label className="block">
@@ -1066,13 +1343,29 @@ function FormField({
   );
 }
 
+/* =========================================================
+   DOCUMENT DETAILS MODAL
+========================================================= */
+
 function DocumentDetailsModal({
   document,
   onClose,
+  onRegenerate,
+  regenerating,
 }: {
   document: VehicleDocument;
   onClose: () => void;
+  onRegenerate: () => void;
+  regenerating: boolean;
 }) {
+  /*
+   * IMPORTANT:
+   *
+   * Use document.pdfUrl because this is the URL
+   * generated by the backend PDF service.
+   */
+  const pdfUrl = getPdfUrl(document.pdfUrl);
+
   return (
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm"
@@ -1083,7 +1376,8 @@ function DocumentDetailsModal({
       }}
     >
       <div className="max-h-[90vh] w-full max-w-2xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900">
-        {/* Header */}
+        {/* HEADER */}
+
         <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5 dark:border-slate-800">
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-100 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400">
@@ -1102,13 +1396,15 @@ function DocumentDetailsModal({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:hover:bg-slate-800"
+            disabled={regenerating}
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-slate-800"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        {/* Content */}
+        {/* CONTENT */}
+
         <div className="max-h-[calc(90vh-82px)] overflow-y-auto p-6">
           <div className="grid gap-4 sm:grid-cols-2">
             <DetailItem label="Document Title" value={document.title} />
@@ -1136,6 +1432,8 @@ function DocumentDetailsModal({
             />
           </div>
 
+          {/* STATUS */}
+
           <div className="mt-5">
             <span
               className={`inline-flex rounded-full px-3 py-1.5 text-xs font-semibold ${getStatusClasses(
@@ -1146,19 +1444,100 @@ function DocumentDetailsModal({
             </span>
           </div>
 
-          {document.fileUrl && (
-            <div className="mt-6">
-              <a
-                href={document.fileUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+          {/* PDF ACTIONS */}
+
+          {pdfUrl ? (
+            <div className="mt-6 rounded-2xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900/50 dark:bg-blue-950/20">
+              <div className="flex items-start gap-3">
+                <FileText className="mt-0.5 h-5 w-5 shrink-0 text-blue-600 dark:text-blue-400" />
+
+                <div className="flex-1">
+                  <h3 className="text-sm font-bold">Generated PDF</h3>
+
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    Your vehicle document has been generated as a PDF.
+                  </p>
+
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    {/* VIEW PDF */}
+
+                    <a
+                      href={pdfUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      View PDF
+                    </a>
+
+                    {/* DOWNLOAD PDF */}
+
+                    <a
+                      href={pdfUrl}
+                      download
+                      className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700"
+                    >
+                      <Download className="h-4 w-4" />
+                      Download PDF
+                    </a>
+
+                    {/* REGENERATE PDF */}
+
+                    <button
+                      type="button"
+                      onClick={onRegenerate}
+                      disabled={regenerating}
+                      className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {regenerating ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-4 w-4" />
+                      )}
+
+                      {regenerating ? "Regenerating..." : "Regenerate PDF"}
+                    </button>
+                  </div>
+
+                  <p className="mt-3 break-all text-[11px] text-slate-400">
+                    {pdfUrl}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/50 dark:bg-amber-950/20">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+
+                <div>
+                  <p className="text-sm font-semibold">PDF not available</p>
+
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    This document does not have a generated PDF yet.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={onRegenerate}
+                disabled={regenerating}
+                className="mt-4 inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <ExternalLink className="h-4 w-4" />
-                Open Document
-              </a>
+                {regenerating ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+
+                {regenerating ? "Regenerating..." : "Generate PDF"}
+              </button>
             </div>
           )}
+
+          {/* NOTES */}
 
           {document.notes && (
             <section className="mt-6">
@@ -1169,6 +1548,8 @@ function DocumentDetailsModal({
               </p>
             </section>
           )}
+
+          {/* CREATED / UPDATED */}
 
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
             <DetailItem
@@ -1186,6 +1567,10 @@ function DocumentDetailsModal({
     </div>
   );
 }
+
+/* =========================================================
+   DETAIL ITEM
+========================================================= */
 
 function DetailItem({ label, value }: { label: string; value: string }) {
   return (
