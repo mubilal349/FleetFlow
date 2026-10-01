@@ -1,8 +1,11 @@
 import { buildApp } from "./app.js";
 import { env } from "./config/env.js";
+import { connectDatabase } from "./config/database.js";
 
 async function startServer() {
   try {
+    await connectDatabase();
+
     const app = await buildApp();
 
     await app.listen({
