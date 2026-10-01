@@ -52,6 +52,20 @@ export async function getVehicleDocuments(
   });
 }
 
+// ==========================================
+// GET SINGLE VEHICLE DOCUMENT
+// ==========================================
+
+export async function getVehicleDocumentById(
+  documentId: string,
+  organizationId: string,
+) {
+  return VehicleDocument.findOne({
+    _id: documentId,
+    organizationId,
+  });
+}
+
 export async function deleteVehicleDocument(
   documentId: string,
   organizationId: string,

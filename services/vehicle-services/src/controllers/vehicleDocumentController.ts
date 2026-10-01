@@ -4,6 +4,7 @@ import {
   createVehicleDocument,
   deleteVehicleDocument,
   getVehicleDocuments,
+  getVehicleDocumentById,
 } from "../services/vehicleDocumentService.js";
 
 import { generateVehicleDocumentPdf } from "../services/pdfService.js";
@@ -22,6 +23,7 @@ export async function createDocument(
       expiryDate?: string;
       fileUrl?: string;
       notes?: string;
+      theme?: "light" | "dark";
     };
 
     // ==========================================
@@ -111,6 +113,7 @@ export async function createDocument(
       expiryDate,
       status: document.status,
       notes: body.notes,
+      theme: body.theme === "dark" ? "dark" : "light",
     });
 
     // ==========================================
@@ -239,6 +242,106 @@ export async function removeDocument(
 
     return reply.code(500).send({
       message: "Failed to delete vehicle document",
+    });
+  }
+}
+
+// ==========================================
+// REGENERATE VEHICLE DOCUMENT PDF
+// ==========================================
+
+export async function regenerateDocument(
+  request: FastifyRequest,
+  reply: FastifyReply,
+) {
+  try {
+    const { documentId } = request.params as {
+      documentId: string;
+    };
+
+    const body = (request.body || {}) as {
+      theme?: "light" | "dark";
+    };
+
+    // ==========================================
+    // AUTHENTICATED USER
+    // ==========================================
+
+    const user = request.user as {
+      orgId?: string;
+      organizationId?: string;
+    };
+
+    const organizationId = user.orgId || user.organizationId;
+
+    if (!organizationId) {
+      return reply.code(400).send({
+        message: "Organization ID is required",
+      });
+    }
+
+    // ==========================================
+    // FIND DOCUMENT
+    // ==========================================
+
+    const document = await getVehicleDocumentById(documentId, organizationId);
+
+    if (!document) {
+      return reply.code(404).send({
+        success: false,
+        message: "Document not found",
+      });
+    }
+
+    // ==========================================
+    // PDF THEME
+    // ==========================================
+
+    const theme: "light" | "dark" = body.theme === "dark" ? "dark" : "light";
+
+    // ==========================================
+    // REGENERATE PDF
+    // ==========================================
+
+    const pdfUrl = await generateVehicleDocumentPdf({
+      vehicleId: String(document.vehicleId),
+      organizationId,
+      documentType: document.documentType,
+      title: document.title,
+      documentNumber: document.documentNumber,
+      issueDate: document.issueDate,
+      expiryDate: document.expiryDate,
+      status: document.status,
+      notes: document.notes,
+      theme,
+    });
+
+    // ==========================================
+    // UPDATE DOCUMENT
+    // ==========================================
+
+    document.pdfUrl = pdfUrl;
+
+    await document.save();
+
+    // ==========================================
+    // RESPONSE
+    // ==========================================
+
+    return reply.send({
+      success: true,
+      message: "Vehicle document PDF regenerated successfully",
+      document,
+    });
+  } catch (error) {
+    request.log.error(error, "Failed to regenerate vehicle document PDF");
+
+    return reply.code(500).send({
+      success: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Failed to regenerate vehicle document PDF",
     });
   }
 }

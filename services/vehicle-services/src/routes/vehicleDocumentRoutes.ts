@@ -4,6 +4,7 @@ import {
   createDocument,
   listDocuments,
   removeDocument,
+  regenerateDocument,
 } from "../controllers/vehicleDocumentController.js";
 
 import { authenticate } from "../middleware/authMiddleware.js";
@@ -35,6 +36,18 @@ export default async function vehicleDocumentRoutes(app: FastifyInstance) {
       preHandler: requireRoles("admin", "manager"),
     },
     createDocument,
+  );
+
+  // ==============================
+  // REGENERATE VEHICLE DOCUMENT PDF
+  // ==============================
+
+  app.post(
+    "/vehicles/documents/:documentId/regenerate",
+    {
+      preHandler: requireRoles("admin", "manager"),
+    },
+    regenerateDocument,
   );
 
   // ==============================
