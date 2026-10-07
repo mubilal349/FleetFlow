@@ -7,6 +7,9 @@ export function calculateMaintenanceAlert(scheduledDate: Date) {
 
   const daysRemaining = Math.ceil(difference / (1000 * 60 * 60 * 24));
 
+  /**
+   * Maintenance is overdue.
+   */
   if (daysRemaining < 0) {
     return {
       severity: "critical" as const,
@@ -15,6 +18,9 @@ export function calculateMaintenanceAlert(scheduledDate: Date) {
     };
   }
 
+  /**
+   * Maintenance is due within 7 days.
+   */
   if (daysRemaining <= 7) {
     return {
       severity: "warning" as const,
@@ -23,6 +29,9 @@ export function calculateMaintenanceAlert(scheduledDate: Date) {
     };
   }
 
+  /**
+   * Maintenance is due within 30 days.
+   */
   if (daysRemaining <= 30) {
     return {
       severity: "upcoming" as const,
@@ -31,5 +40,8 @@ export function calculateMaintenanceAlert(scheduledDate: Date) {
     };
   }
 
+  /**
+   * Maintenance is more than 30 days away.
+   */
   return null;
 }

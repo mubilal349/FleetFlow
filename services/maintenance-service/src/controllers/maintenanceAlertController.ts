@@ -5,6 +5,8 @@ import {
   updateMaintenanceAlertStatus,
 } from "../services/maintenanceAlertService.js";
 
+import { reminderService } from "../services/reminderService.js";
+
 interface AlertParams {
   alertId: string;
 }
@@ -17,6 +19,12 @@ function getOrganizationId(request: FastifyRequest): string {
   return request.user?.organizationId || request.user?.orgId || "org-demo-001";
 }
 
+/**
+ * Get maintenance alerts.
+ *
+ * This also generates/updates the latest reminders
+ * before returning them.
+ */
 export async function getMaintenanceAlertsController(
   request: FastifyRequest,
   reply: FastifyReply,
@@ -41,6 +49,47 @@ export async function getMaintenanceAlertsController(
   }
 }
 
+/**
+ * Manually generate maintenance reminders.
+ *
+ * This endpoint is useful for:
+ * - testing
+ * - admin dashboard refresh
+ * - manually triggering SLA checks
+ */
+export async function generateMaintenanceRemindersController(
+  request: FastifyRequest,
+  reply: FastifyReply,
+) {
+  try {
+    const organizationId = getOrganizationId(request);
+
+    const alerts = await reminderService.generateReminders(organizationId);
+
+    return reply.send({
+      success: true,
+      message: "Maintenance reminders generated successfully",
+      count: alerts.length,
+      alerts,
+    });
+  } catch (error) {
+    request.log.error(error, "Failed to generate maintenance reminders");
+
+    return reply.code(500).send({
+      success: false,
+      message: "Failed to generate maintenance reminders",
+    });
+  }
+}
+
+/**
+ * Update maintenance alert status.
+ *
+ * Supported statuses:
+ * - open
+ * - acknowledged
+ * - resolved
+ */
 export async function updateMaintenanceAlertController(
   request: FastifyRequest,
   reply: FastifyReply,
