@@ -105,6 +105,19 @@ export const buildApp = async () => {
   });
 
   // =========================
+  // Maintenance Service
+  // =========================
+
+  const maintenanceServiceUrl =
+    process.env.MAINTENANCE_SERVICE_URL || "http://localhost:4007";
+
+  await app.register(proxy, {
+    upstream: maintenanceServiceUrl,
+    prefix: "/api/maintenance",
+    rewritePrefix: "/maintenance",
+  });
+
+  // =========================
   // Gateway Routes
   // =========================
 

@@ -31,6 +31,7 @@ import DashboardSidebar from "../../../../components/dashboard/DashboardSidebar"
 
 import { useSidebar } from "@/context/SidebarContext";
 import { useTheme } from "@/context/ThemeContext";
+import { useAuth } from "@/context/AuthContext";
 
 /* =========================================================
    TYPES
@@ -269,6 +270,8 @@ async function parseApiResponse<T>(
 ========================================================= */
 
 export default function VehicleDocumentsPage() {
+  const { user } = useAuth();
+  const canManageDocuments = user?.role === "admin" || user?.role === "manager";
   const { collapsed } = useSidebar();
 
   /*
@@ -706,18 +709,20 @@ export default function VehicleDocumentsPage() {
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                setError("");
-                resetForm();
-                setShowCreateModal(true);
-              }}
-              className="inline-flex w-fit items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700"
-            >
-              <Plus className="h-5 w-5" />
-              Add Document
-            </button>
+            {canManageDocuments && (
+              <button
+                type="button"
+                onClick={() => {
+                  setError("");
+                  resetForm();
+                  setShowCreateModal(true);
+                }}
+                className="inline-flex w-fit items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700"
+              >
+                <Plus className="h-5 w-5" />
+                Add Document
+              </button>
+            )}
           </div>
 
           {/* ERROR */}
