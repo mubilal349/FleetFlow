@@ -118,6 +118,19 @@ export const buildApp = async () => {
   });
 
   // =========================
+  // Reporting Service
+  // =========================
+
+  const reportingServiceUrl =
+    process.env.REPORTING_SERVICE_URL || "http://localhost:4008";
+
+  await app.register(proxy, {
+    upstream: reportingServiceUrl,
+    prefix: "/api/reports",
+    rewritePrefix: "/reports",
+  });
+
+  // =========================
   // Gateway Routes
   // =========================
 
