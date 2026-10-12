@@ -5,22 +5,26 @@ import {
   useEffect,
   useMemo,
   useState,
+  type ChangeEvent,
   type FormEvent,
 } from "react";
 import {
-  Activity,
   AlertCircle,
-  ArrowUpRight,
+  ArrowLeft,
   CalendarDays,
+  Check,
   CheckCircle2,
   ChevronDown,
-  Clock3,
-  Edit3,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Edit,
   Eye,
+  FileText,
   Filter,
+  ImagePlus,
   Loader2,
   Mail,
-  MapPin,
   MoreHorizontal,
   Phone,
   Plus,
@@ -29,7 +33,9 @@ import {
   ShieldCheck,
   Trash2,
   Truck,
-  UserRound,
+  Upload,
+  User,
+  UserCheck,
   Users,
   X,
 } from "lucide-react";
@@ -38,20 +44,43 @@ import DashboardHeader from "../../components/dashboard/DashboardHeader";
 import DashboardSidebar from "../../components/dashboard/DashboardSidebar";
 import { useSidebar } from "@/context/SidebarContext";
 
+/* -------------------------------------------------------------------------- */
+/*                                   Config                                   */
+/* -------------------------------------------------------------------------- */
+
+const configuredApiBase = (
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
+).replace(/\/+$/, "");
+
+const API_BASE = /\/api$/i.test(configuredApiBase)
+  ? configuredApiBase
+  : `${configuredApiBase}/api`;
+
+const DRIVER_SERVICE_BASE = (
+  process.env.NEXT_PUBLIC_DRIVER_SERVICE_URL || "http://localhost:4009"
+).replace(/\/+$/, "");
+
+const TOKEN_KEY = "fleetflow_token";
+const PAGE_SIZE = 10;
+
+/* -------------------------------------------------------------------------- */
+/*                                    Types                                   */
+/* -------------------------------------------------------------------------- */
+
 type DriverStatus =
   | "available"
+  | "assigned"
   | "on_trip"
-  | "off_duty"
-  | "suspended"
+  | "on_leave"
   | "inactive";
 
-type LicenseType = "car" | "ltv" | "htv" | "motorcycle" | "bus" | "other";
-
-interface EmergencyContact {
-  name?: string;
-  phone?: string;
-  relationship?: string;
-}
+type LicenseType =
+  | "motorcycle"
+  | "car"
+  | "light_transport"
+  | "heavy_transport"
+  | "commercial"
+  | "other";
 
 interface Driver {
   _id?: string;
@@ -63,17 +92,15 @@ interface Driver {
   licenseNumber: string;
   licenseType: LicenseType;
   licenseExpiry: string;
-  dateOfBirth?: string;
-  address?: string;
-  emergencyContact?: EmergencyContact;
-  joiningDate?: string;
   status: DriverStatus;
+  profileImage?: string | null;
   organizationId?: string;
   createdAt?: string;
   updatedAt?: string;
+  [key: string]: unknown;
 }
 
-interface DriverForm {
+interface DriverFormData {
   firstName: string;
   lastName: string;
   email: string;
@@ -81,41 +108,12 @@ interface DriverForm {
   licenseNumber: string;
   licenseType: LicenseType;
   licenseExpiry: string;
-  dateOfBirth: string;
-  address: string;
-  joiningDate: string;
   status: DriverStatus;
-  emergencyName: string;
-  emergencyPhone: string;
-  emergencyRelationship: string;
 }
 
-const configuredApiBase = (
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
-).replace(/\/+$/, "");
+type ModalType = "create" | "edit" | "details" | "avatar" | null;
 
-const API_BASE = /\/api$/i.test(configuredApiBase)
-  ? configuredApiBase
-  : `${configuredApiBase}/api`;
-
-const STATUSES: DriverStatus[] = [
-  "available",
-  "on_trip",
-  "off_duty",
-  "suspended",
-  "inactive",
-];
-
-const LICENSE_TYPES: LicenseType[] = [
-  "car",
-  "ltv",
-  "htv",
-  "motorcycle",
-  "bus",
-  "other",
-];
-
-const emptyForm: DriverForm = {
+const EMPTY_FORM: DriverFormData = {
   firstName: "",
   lastName: "",
   email: "",
@@ -123,101 +121,316 @@ const emptyForm: DriverForm = {
   licenseNumber: "",
   licenseType: "car",
   licenseExpiry: "",
-  dateOfBirth: "",
-  address: "",
-  joiningDate: "",
   status: "available",
-  emergencyName: "",
-  emergencyPhone: "",
-  emergencyRelationship: "",
 };
 
-const statusLabels: Record<DriverStatus, string> = {
-  available: "Available",
-  on_trip: "On Trip",
-  off_duty: "Off Duty",
-  suspended: "Suspended",
-  inactive: "Inactive",
-};
+const STATUS_OPTIONS: { value: DriverStatus; label: string }[] = [
+  { value: "available", label: "Available" },
+  { value: "assigned", label: "Assigned" },
+  { value: "on_trip", label: "On Trip" },
+  { value: "on_leave", label: "On Leave" },
+  { value: "inactive", label: "Inactive" },
+];
 
-const statusStyles: Record<DriverStatus, string> = {
-  available:
-    "bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-400/10 dark:text-emerald-400 dark:ring-emerald-400/20",
-  on_trip:
-    "bg-blue-50 text-blue-700 ring-blue-600/20 dark:bg-blue-400/10 dark:text-blue-400 dark:ring-blue-400/20",
-  off_duty:
-    "bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-400/10 dark:text-amber-400 dark:ring-amber-400/20",
-  suspended:
-    "bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-400/10 dark:text-red-400 dark:ring-red-400/20",
-  inactive:
-    "bg-gray-100 text-gray-600 ring-gray-500/20 dark:bg-gray-400/10 dark:text-gray-400 dark:ring-gray-400/20",
-};
+const LICENSE_OPTIONS: { value: LicenseType; label: string }[] = [
+  { value: "motorcycle", label: "Motorcycle" },
+  { value: "car", label: "Car" },
+  { value: "light_transport", label: "Light Transport" },
+  { value: "heavy_transport", label: "Heavy Transport" },
+  { value: "commercial", label: "Commercial" },
+  { value: "other", label: "Other" },
+];
 
-function driverId(driver: Driver): string {
-  return driver._id || driver.id || "";
+/* -------------------------------------------------------------------------- */
+/*                              Helper functions                              */
+/* -------------------------------------------------------------------------- */
+
+function getDriverId(driver: Driver): string {
+  return String(driver._id || driver.id || "");
 }
 
-function dateInputValue(value?: string): string {
-  if (!value) return "";
-  return value.slice(0, 10);
+function getDriverName(driver: Driver): string {
+  return `${driver.firstName || ""} ${driver.lastName || ""}`.trim();
 }
 
-function formatDate(value?: string): string {
+function getInitials(driver: Driver): string {
+  const first = driver.firstName?.trim()?.[0] ?? "";
+  const last = driver.lastName?.trim()?.[0] ?? "";
+
+  return `${first}${last}`.toUpperCase() || "DR";
+}
+
+/**
+ * Resolve both absolute URLs and relative upload paths.
+ *
+ * Examples:
+ *   http://localhost:4009/uploads/drivers/photo.jpg
+ *   /uploads/drivers/photo.jpg
+ *   uploads/drivers/photo.jpg
+ */
+function resolveDriverImageUrl(value?: string | null): string {
+  if (!value?.trim()) return "";
+
+  const imagePath = value.trim();
+
+  if (/^https?:\/\//i.test(imagePath)) {
+    return imagePath;
+  }
+
+  if (imagePath.startsWith("data:")) {
+    return imagePath;
+  }
+
+  if (imagePath.startsWith("blob:")) {
+    return imagePath;
+  }
+
+  if (imagePath.startsWith("//")) {
+    return `http:${imagePath}`;
+  }
+
+  try {
+    return new URL(
+      imagePath.replace(/^\/+/, ""),
+      `${DRIVER_SERVICE_BASE}/`,
+    ).toString();
+  } catch {
+    return "";
+  }
+}
+
+function normalizeDriver(value: unknown): Driver {
+  const raw =
+    value && typeof value === "object"
+      ? (value as Record<string, unknown>)
+      : {};
+
+  const imageValue =
+    raw.profileImage ??
+    raw.profileImageUrl ??
+    raw.avatarUrl ??
+    raw.avatar ??
+    raw.photoUrl ??
+    raw.imageUrl;
+
+  const validStatuses: DriverStatus[] = [
+    "available",
+    "assigned",
+    "on_trip",
+    "on_leave",
+    "inactive",
+  ];
+
+  const validLicenseTypes: LicenseType[] = [
+    "motorcycle",
+    "car",
+    "light_transport",
+    "heavy_transport",
+    "commercial",
+    "other",
+  ];
+
+  const status =
+    typeof raw.status === "string" &&
+    validStatuses.includes(raw.status as DriverStatus)
+      ? (raw.status as DriverStatus)
+      : "available";
+
+  const licenseType =
+    typeof raw.licenseType === "string" &&
+    validLicenseTypes.includes(raw.licenseType as LicenseType)
+      ? (raw.licenseType as LicenseType)
+      : "other";
+
+  return {
+    ...raw,
+    _id: typeof raw._id === "string" ? raw._id : undefined,
+    id: typeof raw.id === "string" ? raw.id : undefined,
+    firstName: typeof raw.firstName === "string" ? raw.firstName : "",
+    lastName: typeof raw.lastName === "string" ? raw.lastName : "",
+    email: typeof raw.email === "string" ? raw.email : "",
+    phone: typeof raw.phone === "string" ? raw.phone : "",
+    licenseNumber:
+      typeof raw.licenseNumber === "string" ? raw.licenseNumber : "",
+    licenseType,
+    licenseExpiry:
+      typeof raw.licenseExpiry === "string" ? raw.licenseExpiry : "",
+    status,
+    profileImage:
+      typeof imageValue === "string" ? resolveDriverImageUrl(imageValue) : null,
+  } as Driver;
+}
+
+function getDriverList(payload: unknown): Driver[] {
+  if (Array.isArray(payload)) {
+    return payload.map(normalizeDriver);
+  }
+
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+
+  const raw = payload as Record<string, unknown>;
+
+  const candidates: unknown[] = [
+    raw.data,
+    raw.drivers,
+    raw.results,
+    raw.items,
+    raw.users,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate.map(normalizeDriver);
+    }
+
+    if (candidate && typeof candidate === "object") {
+      const nested = candidate as Record<string, unknown>;
+
+      for (const key of ["drivers", "results", "items", "users"]) {
+        if (Array.isArray(nested[key])) {
+          return (nested[key] as unknown[]).map(normalizeDriver);
+        }
+      }
+    }
+  }
+
+  if (typeof raw.firstName === "string" || typeof raw._id === "string") {
+    return [normalizeDriver(raw)];
+  }
+
+  return [];
+}
+
+function formatDate(value?: string | null): string {
   if (!value) return "—";
 
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value.slice(0, 10);
+
+  if (Number.isNaN(date.getTime())) return "—";
 
   return date.toLocaleDateString("en-GB", {
     day: "2-digit",
     month: "short",
     year: "numeric",
+    timeZone: "UTC",
   });
 }
 
-function displayLicenseType(value: string): string {
-  return value.toUpperCase();
+function isLicenseExpired(value?: string | null): boolean {
+  if (!value) return false;
+
+  const expiry = new Date(value);
+
+  if (Number.isNaN(expiry.getTime())) return false;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  expiry.setHours(0, 0, 0, 0);
+
+  return expiry < today;
 }
 
-function getErrorMessage(payload: unknown, fallback: string): string {
-  if (
-    payload &&
-    typeof payload === "object" &&
-    "message" in payload &&
-    typeof payload.message === "string"
-  ) {
-    return payload.message;
+function getStatusClasses(status: DriverStatus): string {
+  switch (status) {
+    case "available":
+      return "bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-400/10 dark:text-emerald-400 dark:ring-emerald-400/20";
+    case "assigned":
+      return "bg-blue-50 text-blue-700 ring-blue-600/20 dark:bg-blue-400/10 dark:text-blue-400 dark:ring-blue-400/20";
+    case "on_trip":
+      return "bg-violet-50 text-violet-700 ring-violet-600/20 dark:bg-violet-400/10 dark:text-violet-400 dark:ring-violet-400/20";
+    case "on_leave":
+      return "bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-400/10 dark:text-amber-400 dark:ring-amber-400/20";
+    case "inactive":
+      return "bg-slate-100 text-slate-600 ring-slate-500/20 dark:bg-slate-400/10 dark:text-slate-400 dark:ring-slate-400/20";
+    default:
+      return "bg-slate-100 text-slate-600 ring-slate-500/20";
   }
-
-  return fallback;
 }
 
-function getDriverList(payload: unknown): Driver[] {
-  if (!payload || typeof payload !== "object") return [];
+function getStatusLabel(status: DriverStatus): string {
+  return (
+    STATUS_OPTIONS.find((option) => option.value === status)?.label ??
+    status.replace(/_/g, " ")
+  );
+}
 
-  const result = payload as {
-    data?: unknown;
-    drivers?: unknown;
-    results?: unknown;
-  };
+/* -------------------------------------------------------------------------- */
+/*                             Avatar component                               */
+/* -------------------------------------------------------------------------- */
 
-  if (Array.isArray(result.data)) return result.data as Driver[];
-  if (Array.isArray(result.drivers)) return result.drivers as Driver[];
-  if (Array.isArray(result.results)) return result.results as Driver[];
+function DriverAvatar({
+  driver,
+  size = "normal",
+  onClick,
+}: {
+  driver: Driver;
+  size?: "normal" | "large";
+  onClick?: () => void;
+}) {
+  const [imageFailed, setImageFailed] = useState(false);
 
-  if (result.data && typeof result.data === "object") {
-    const nested = result.data as {
-      drivers?: unknown;
-      results?: unknown;
-      items?: unknown;
-    };
+  const imageUrl = driver.profileImage?.trim() || "";
 
-    if (Array.isArray(nested.drivers)) return nested.drivers as Driver[];
-    if (Array.isArray(nested.results)) return nested.results as Driver[];
-    if (Array.isArray(nested.items)) return nested.items as Driver[];
+  useEffect(() => {
+    setImageFailed(false);
+  }, [imageUrl]);
+
+  const sizeClass =
+    size === "large" ? "h-16 w-16 rounded-2xl" : "h-11 w-11 rounded-xl";
+
+  const textClass = size === "large" ? "text-lg" : "text-sm";
+
+  const avatarContent =
+    imageUrl && !imageFailed ? (
+      <img
+        src={imageUrl}
+        alt={`${getDriverName(driver)} profile`}
+        className={`${sizeClass} shrink-0 border border-slate-200 object-cover dark:border-slate-700`}
+        onError={() => {
+          console.error("Unable to load driver profile image:", imageUrl);
+          setImageFailed(true);
+        }}
+      />
+    ) : (
+      <div
+        aria-label={`${getDriverName(driver)} initials`}
+        className={`flex ${sizeClass} shrink-0 items-center justify-center border border-blue-100 bg-blue-50 font-bold text-blue-700 dark:border-blue-400/20 dark:bg-blue-400/10 dark:text-blue-400 ${textClass}`}
+      >
+        {getInitials(driver)}
+      </div>
+    );
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        title="Change profile photo"
+        className="shrink-0 rounded-2xl transition hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
+      >
+        {avatarContent}
+      </button>
+    );
   }
 
-  return [];
+  return avatarContent;
+}
+
+/* -------------------------------------------------------------------------- */
+/*                              Reusable UI                                   */
+/* -------------------------------------------------------------------------- */
+
+function StatusBadge({ status }: { status: DriverStatus }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold capitalize ring-1 ring-inset ${getStatusClasses(status)}`}
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      {getStatusLabel(status)}
+    </span>
+  );
 }
 
 function StatCard({
@@ -234,19 +447,20 @@ function StatCard({
   iconClass: string;
 }) {
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-gray-500 dark:text-slate-400">
+          <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
             {title}
           </p>
-          <p className="mt-3 text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
+          <p className="mt-2 text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
             {value}
           </p>
-          <p className="mt-2 text-xs text-gray-500 dark:text-slate-400">
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             {description}
           </p>
         </div>
+
         <div className={`rounded-xl p-3 ${iconClass}`}>
           <Icon size={21} />
         </div>
@@ -255,57 +469,132 @@ function StatCard({
   );
 }
 
+function Field({
+  label,
+  required,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
+        {label}
+        {required && <span className="ml-1 text-red-500">*</span>}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+const inputClass =
+  "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500";
+
+const primaryButtonClass =
+  "inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60";
+
+const secondaryButtonClass =
+  "inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800";
+
+/* -------------------------------------------------------------------------- */
+/*                              Main page                                     */
+/* -------------------------------------------------------------------------- */
+
 export default function DriversPage() {
   const { collapsed } = useSidebar();
+
+  const [mounted, setMounted] = useState(false);
 
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [success, setSuccess] = useState("");
 
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | DriverStatus>("all");
+  const [statusFilter, setStatusFilter] = useState<DriverStatus | "all">("all");
+  const [page, setPage] = useState(1);
 
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingDriver, setEditingDriver] = useState<Driver | null>(null);
-  const [viewingDriver, setViewingDriver] = useState<Driver | null>(null);
-  const [form, setForm] = useState<DriverForm>(emptyForm);
+  const [modal, setModal] = useState<ModalType>(null);
+  const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null);
+  const [form, setForm] = useState<DriverFormData>(EMPTY_FORM);
 
-  const [menuDriverId, setMenuDriverId] = useState<string | null>(null);
-  const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadPreview, setUploadPreview] = useState("");
+  const [uploading, setUploading] = useState(false);
 
-  const token = () =>
-    typeof window !== "undefined"
-      ? window.localStorage.getItem("fleetflow_token")
-      : null;
+  const [deleteTarget, setDeleteTarget] = useState<Driver | null>(null);
 
-  const request = useCallback(async (path: string, init: RequestInit = {}) => {
-    const currentToken =
-      typeof window !== "undefined"
-        ? window.localStorage.getItem("fleetflow_token")
-        : null;
-
-    const response = await fetch(`${API_BASE}${path}`, {
-      ...init,
-      headers: {
-        ...(init.body ? { "Content-Type": "application/json" } : {}),
-        ...(currentToken ? { Authorization: `Bearer ${currentToken}` } : {}),
-        ...init.headers,
-      },
-    });
-
-    const payload = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      throw new Error(
-        getErrorMessage(payload, `Request failed (${response.status})`),
-      );
-    }
-
-    return payload;
+  // Keep the server render and first client render identical.
+  useEffect(() => {
+    setMounted(true);
   }, []);
+
+  const request = useCallback(
+    async (path: string, options: RequestInit = {}) => {
+      const token =
+        typeof window !== "undefined"
+          ? window.localStorage.getItem(TOKEN_KEY)
+          : null;
+
+      const headers = new Headers(options.headers);
+
+      if (token) {
+        headers.set("Authorization", `Bearer ${token}`);
+      }
+
+      if (
+        options.body &&
+        !(options.body instanceof FormData) &&
+        !headers.has("Content-Type")
+      ) {
+        headers.set("Content-Type", "application/json");
+      }
+
+      const response = await fetch(`${API_BASE}${path}`, {
+        ...options,
+        headers,
+      });
+
+      const responseText = await response.text();
+      let payload: unknown = null;
+
+      if (responseText) {
+        try {
+          payload = JSON.parse(responseText);
+        } catch {
+          payload = responseText;
+        }
+      }
+
+      if (!response.ok) {
+        let message = `Request failed (${response.status}).`;
+
+        if (payload && typeof payload === "object") {
+          const raw = payload as Record<string, unknown>;
+          const nested =
+            raw.error && typeof raw.error === "object"
+              ? (raw.error as Record<string, unknown>)
+              : null;
+
+          if (typeof raw.message === "string") {
+            message = raw.message;
+          } else if (typeof raw.error === "string") {
+            message = raw.error;
+          } else if (nested && typeof nested.message === "string") {
+            message = nested.message;
+          }
+        }
+
+        throw new Error(message);
+      }
+
+      return payload;
+    },
+    [],
+  );
 
   const fetchDrivers = useCallback(async () => {
     setLoading(true);
@@ -326,138 +615,168 @@ export default function DriversPage() {
   }, [fetchDrivers]);
 
   const filteredDrivers = useMemo(() => {
-    const query = search.trim().toLowerCase();
+    const normalizedSearch = search.trim().toLowerCase();
 
     return drivers.filter((driver) => {
       const matchesStatus =
         statusFilter === "all" || driver.status === statusFilter;
 
-      const searchable = [
-        driver.firstName,
-        driver.lastName,
+      const searchableValues = [
+        getDriverName(driver),
         driver.email,
         driver.phone,
         driver.licenseNumber,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
+        driver.licenseType,
+      ];
 
-      return matchesStatus && (!query || searchable.includes(query));
+      const matchesSearch =
+        !normalizedSearch ||
+        searchableValues.some((value) =>
+          String(value ?? "")
+            .toLowerCase()
+            .includes(normalizedSearch),
+        );
+
+      return matchesStatus && matchesSearch;
     });
   }, [drivers, search, statusFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredDrivers.length / PAGE_SIZE));
+
+  const paginatedDrivers = useMemo(() => {
+    const startIndex = (page - 1) * PAGE_SIZE;
+    return filteredDrivers.slice(startIndex, startIndex + PAGE_SIZE);
+  }, [filteredDrivers, page]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   const stats = useMemo(
     () => ({
       total: drivers.length,
-      available: drivers.filter((d) => d.status === "available").length,
-      onTrip: drivers.filter((d) => d.status === "on_trip").length,
-      offDuty: drivers.filter((d) => d.status === "off_duty").length,
-      suspended: drivers.filter((d) => d.status === "suspended").length,
+      available: drivers.filter((driver) => driver.status === "available")
+        .length,
+      assigned: drivers.filter((driver) => driver.status === "assigned").length,
+      inactive: drivers.filter((driver) => driver.status === "inactive").length,
     }),
     [drivers],
   );
 
-  function openCreateModal() {
-    setEditingDriver(null);
-    setForm({ ...emptyForm });
+  function clearNotifications() {
     setError("");
-    setNotice("");
-    setModalOpen(true);
+    setSuccess("");
+  }
+
+  function openCreateModal() {
+    clearNotifications();
+    setForm(EMPTY_FORM);
+    setSelectedDriver(null);
+    setModal("create");
   }
 
   function openEditModal(driver: Driver) {
-    setEditingDriver(driver);
+    clearNotifications();
+    setSelectedDriver(driver);
+
     setForm({
-      firstName: driver.firstName || "",
-      lastName: driver.lastName || "",
-      email: driver.email || "",
-      phone: driver.phone || "",
-      licenseNumber: driver.licenseNumber || "",
-      licenseType: driver.licenseType || "car",
-      licenseExpiry: dateInputValue(driver.licenseExpiry),
-      dateOfBirth: dateInputValue(driver.dateOfBirth),
-      address: driver.address || "",
-      joiningDate: dateInputValue(driver.joiningDate),
-      status: driver.status || "available",
-      emergencyName: driver.emergencyContact?.name || "",
-      emergencyPhone: driver.emergencyContact?.phone || "",
-      emergencyRelationship: driver.emergencyContact?.relationship || "",
+      firstName: driver.firstName ?? "",
+      lastName: driver.lastName ?? "",
+      email: driver.email ?? "",
+      phone: driver.phone ?? "",
+      licenseNumber: driver.licenseNumber ?? "",
+      licenseType: driver.licenseType ?? "other",
+      licenseExpiry: driver.licenseExpiry
+        ? driver.licenseExpiry.slice(0, 10)
+        : "",
+      status: driver.status ?? "available",
     });
-    setError("");
-    setNotice("");
-    setViewingDriver(null);
-    setModalOpen(true);
-    setMenuDriverId(null);
+
+    setModal("edit");
   }
 
-  function updateField<K extends keyof DriverForm>(
+  function openDetailsModal(driver: Driver) {
+    clearNotifications();
+    setSelectedDriver(driver);
+    setModal("details");
+  }
+
+  function closeModal() {
+    if (submitting || uploading) return;
+
+    setModal(null);
+    setSelectedDriver(null);
+    setForm(EMPTY_FORM);
+    setUploadFile(null);
+    setUploadPreview("");
+  }
+
+  function updateForm<K extends keyof DriverFormData>(
     key: K,
-    value: DriverForm[K],
+    value: DriverFormData[K],
   ) {
-    setForm((previous) => ({ ...previous, [key]: value }));
+    setForm((current) => ({ ...current, [key]: value }));
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setSubmitting(true);
-    setError("");
-    setNotice("");
+    clearNotifications();
 
-    const body: Record<string, unknown> = {
-      firstName: form.firstName.trim(),
-      lastName: form.lastName.trim(),
-      phone: form.phone.trim(),
-      licenseNumber: form.licenseNumber.trim(),
-      licenseType: form.licenseType,
-      licenseExpiry: form.licenseExpiry,
-      status: form.status,
-    };
-
-    if (form.email.trim()) body.email = form.email.trim();
-    if (form.dateOfBirth) body.dateOfBirth = form.dateOfBirth;
-    if (form.address.trim()) body.address = form.address.trim();
-    if (form.joiningDate) body.joiningDate = form.joiningDate;
-
-    if (
-      form.emergencyName.trim() ||
-      form.emergencyPhone.trim() ||
-      form.emergencyRelationship.trim()
-    ) {
-      body.emergencyContact = {
-        ...(form.emergencyName.trim()
-          ? { name: form.emergencyName.trim() }
-          : {}),
-        ...(form.emergencyPhone.trim()
-          ? { phone: form.emergencyPhone.trim() }
-          : {}),
-        ...(form.emergencyRelationship.trim()
-          ? { relationship: form.emergencyRelationship.trim() }
-          : {}),
-      };
+    if (!form.firstName.trim() || !form.lastName.trim()) {
+      setError("First name and last name are required.");
+      return;
     }
 
+    if (!form.phone.trim() || !form.licenseNumber.trim()) {
+      setError("Phone number and license number are required.");
+      return;
+    }
+
+    setSubmitting(true);
+
     try {
-      if (editingDriver) {
-        await request(
-          `/drivers/${encodeURIComponent(driverId(editingDriver))}`,
-          {
-            method: "PATCH",
-            body: JSON.stringify(body),
-          },
-        );
-        setNotice("Driver updated successfully.");
+      const body = {
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
+        email: form.email.trim(),
+        phone: form.phone.trim(),
+        licenseNumber: form.licenseNumber.trim(),
+        licenseType: form.licenseType,
+        licenseExpiry: form.licenseExpiry,
+        status: form.status,
+      };
+
+      if (modal === "edit" && selectedDriver) {
+        const id = getDriverId(selectedDriver);
+
+        if (!id) {
+          throw new Error("The selected driver does not have a valid ID.");
+        }
+
+        await request(`/drivers/${encodeURIComponent(id)}`, {
+          method: "PUT",
+          body: JSON.stringify(body),
+        });
+
+        setSuccess("Driver updated successfully.");
       } else {
         await request("/drivers", {
           method: "POST",
           body: JSON.stringify(body),
         });
-        setNotice("Driver created successfully.");
+
+        setSuccess("Driver created successfully.");
       }
 
-      setModalOpen(false);
-      setEditingDriver(null);
-      setForm({ ...emptyForm });
+      setModal(null);
+      setSelectedDriver(null);
+      setForm(EMPTY_FORM);
       await fetchDrivers();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to save driver.");
@@ -466,128 +785,256 @@ export default function DriversPage() {
     }
   }
 
-  async function handleStatusChange(id: string, status: DriverStatus) {
-    setUpdatingStatusId(id);
-    setError("");
-    setNotice("");
-    setMenuDriverId(null);
+  async function handleDelete() {
+    if (!deleteTarget) return;
 
-    try {
-      await request(`/drivers/${encodeURIComponent(id)}/status`, {
-        method: "PATCH",
-        body: JSON.stringify({ status }),
-      });
+    const id = getDriverId(deleteTarget);
 
-      setDrivers((previous) =>
-        previous.map((driver) =>
-          driverId(driver) === id ? { ...driver, status } : driver,
-        ),
-      );
-
-      setNotice("Driver status updated.");
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Unable to update driver status.",
-      );
-    } finally {
-      setUpdatingStatusId(null);
-    }
-  }
-
-  async function handleDelete(driver: Driver) {
-    const id = driverId(driver);
     if (!id) {
-      setError("This driver has no valid ID.");
+      setError("The selected driver does not have a valid ID.");
+      setDeleteTarget(null);
       return;
     }
 
-    const confirmed = window.confirm(
-      `Delete ${driver.firstName} ${driver.lastName}? This action cannot be undone.`,
-    );
-
-    if (!confirmed) return;
-
-    setDeletingId(id);
-    setError("");
-    setNotice("");
-    setMenuDriverId(null);
+    clearNotifications();
+    setSubmitting(true);
 
     try {
       await request(`/drivers/${encodeURIComponent(id)}`, {
         method: "DELETE",
       });
 
-      setDrivers((previous) =>
-        previous.filter((item) => driverId(item) !== id),
+      setDrivers((current) =>
+        current.filter((driver) => getDriverId(driver) !== id),
       );
-      setNotice("Driver deleted successfully.");
 
-      if (viewingDriver && driverId(viewingDriver) === id) {
-        setViewingDriver(null);
+      setSuccess("Driver deleted successfully.");
+      setDeleteTarget(null);
+
+      if (selectedDriver && getDriverId(selectedDriver) === id) {
+        setSelectedDriver(null);
+        setModal(null);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to delete driver.");
     } finally {
-      setDeletingId(null);
+      setSubmitting(false);
     }
   }
 
-  const inputClass =
-    "mt-1.5 w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500";
+  async function handleStatusChange(driver: Driver, nextStatus: DriverStatus) {
+    const id = getDriverId(driver);
 
-  const labelClass =
-    "block text-sm font-medium text-gray-700 dark:text-slate-300";
+    if (!id) {
+      setError("The selected driver does not have a valid ID.");
+      return;
+    }
+
+    clearNotifications();
+
+    try {
+      const payload = await request(`/drivers/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: nextStatus }),
+      });
+
+      const updatedFromResponse = getDriverList(payload)[0];
+
+      setDrivers((current) =>
+        current.map((item) =>
+          getDriverId(item) === id
+            ? updatedFromResponse
+              ? { ...item, ...updatedFromResponse, status: nextStatus }
+              : { ...item, status: nextStatus }
+            : item,
+        ),
+      );
+
+      setSuccess("Driver status updated.");
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Unable to update driver status.",
+      );
+    }
+  }
+
+  function openAvatarModal(driver: Driver) {
+    clearNotifications();
+    setSelectedDriver(driver);
+    setUploadFile(null);
+    setUploadPreview("");
+    setModal("avatar");
+  }
+
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setError("Please select an image file.");
+      event.target.value = "";
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setError("The image must be smaller than 5 MB.");
+      event.target.value = "";
+      return;
+    }
+
+    setError("");
+    setUploadFile(file);
+
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        setUploadPreview(reader.result);
+      }
+    };
+
+    reader.readAsDataURL(file);
+  }
+
+  async function handleAvatarUpload(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!selectedDriver || !uploadFile) {
+      setError("Please select an image before uploading.");
+      return;
+    }
+
+    const id = getDriverId(selectedDriver);
+
+    if (!id) {
+      setError("The selected driver does not have a valid ID.");
+      return;
+    }
+
+    clearNotifications();
+    setUploading(true);
+
+    try {
+      const token = window.localStorage.getItem(TOKEN_KEY);
+      const formData = new FormData();
+
+      formData.append("file", uploadFile);
+
+      const headers = new Headers();
+
+      if (token) {
+        headers.set("Authorization", `Bearer ${token}`);
+      }
+
+      const response = await fetch(
+        `${API_BASE}/drivers/${encodeURIComponent(id)}/profile-image`,
+        {
+          method: "POST",
+          headers,
+          body: formData,
+        },
+      );
+
+      const responseText = await response.text();
+      let payload: unknown = null;
+
+      if (responseText) {
+        try {
+          payload = JSON.parse(responseText);
+        } catch {
+          payload = responseText;
+        }
+      }
+
+      if (!response.ok) {
+        const raw =
+          payload && typeof payload === "object"
+            ? (payload as Record<string, unknown>)
+            : {};
+
+        throw new Error(
+          typeof raw.message === "string"
+            ? raw.message
+            : typeof raw.error === "string"
+              ? raw.error
+              : `Image upload failed (${response.status}).`,
+        );
+      }
+
+      setModal(null);
+      setUploadFile(null);
+      setUploadPreview("");
+      setSuccess("Driver profile photo uploaded successfully.");
+
+      await fetchDrivers();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Unable to upload profile photo.",
+      );
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  /* ------------------------------------------------------------------------ */
+  /*                                   Render                                 */
+  /* ------------------------------------------------------------------------ */
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-slate-950 dark:text-white">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
       <DashboardSidebar />
-      <DashboardHeader />
 
-      <main
-        className={`min-h-screen px-4 pb-10 pt-24 transition-all duration-300 sm:px-6 lg:px-8 ${
-          collapsed ? "lg:pl-[104px]" : "lg:pl-[294px]"
+      <div
+        className={`min-h-screen transition-[margin] duration-300 ${
+          collapsed ? "lg:pl-[80px]" : "lg:pl-[270px]"
         }`}
       >
-        <div className="mx-auto max-w-[1600px]">
+        <DashboardHeader />
+
+        <main className="mx-auto max-w-[1600px] p-4 sm:p-6 lg:p-8">
           {/* Page heading */}
-          <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
             <div>
-              <div className="mb-2 flex items-center gap-2 text-sm text-gray-500 dark:text-slate-400">
+              <div className="mb-2 flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
                 <Truck size={16} />
                 <span>Fleet Management</span>
-                <span>/</span>
-                <span className="text-blue-600 dark:text-blue-400">
+                <ChevronRight size={14} />
+                <span className="text-slate-700 dark:text-slate-200">
                   Drivers
                 </span>
               </div>
 
-              <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
                 Driver Management
               </h1>
 
-              <p className="mt-2 max-w-2xl text-sm text-gray-500 dark:text-slate-400">
-                Manage your drivers, license details, availability, and
-                emergency contacts in one place.
+              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                Manage driver profiles, licenses, availability, and contact
+                details.
               </p>
             </div>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => void fetchDrivers()}
-                disabled={Boolean(loading)}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-100 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                // mounted=false during SSR and the first client render,
+                // preventing the disabled=true / disabled-absent mismatch.
+                disabled={mounted && loading}
+                className={secondaryButtonClass}
               >
                 <RefreshCw
                   size={16}
-                  className={loading ? "animate-spin" : ""}
+                  className={mounted && loading ? "animate-spin" : ""}
                 />
-                Refresh
+                {mounted && loading ? "Refreshing..." : "Refresh"}
               </button>
 
               <button
+                type="button"
                 onClick={openCreateModal}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-950"
+                className={primaryButtonClass}
               >
                 <Plus size={17} />
                 Add Driver
@@ -596,21 +1043,37 @@ export default function DriversPage() {
           </div>
 
           {/* Notifications */}
-          {error && !modalOpen && (
-            <div className="mb-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
-              <AlertCircle size={18} className="mt-0.5 shrink-0" />
-              <div className="flex-1">{error}</div>
-              <button onClick={() => setError("")} aria-label="Dismiss error">
+          {error && (
+            <div
+              role="alert"
+              className="mb-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300"
+            >
+              <AlertCircle size={19} className="mt-0.5 shrink-0" />
+              <div className="min-w-0 flex-1">{error}</div>
+              <button
+                type="button"
+                onClick={() => setError("")}
+                className="rounded-lg p-1 hover:bg-red-100 dark:hover:bg-red-900/40"
+                aria-label="Dismiss error"
+              >
                 <X size={16} />
               </button>
             </div>
           )}
 
-          {notice && (
-            <div className="mb-5 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300">
-              <CheckCircle2 size={18} className="shrink-0" />
-              <span className="flex-1">{notice}</span>
-              <button onClick={() => setNotice("")} aria-label="Dismiss notice">
+          {success && (
+            <div
+              role="status"
+              className="mb-5 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300"
+            >
+              <CheckCircle2 size={19} className="mt-0.5 shrink-0" />
+              <div className="min-w-0 flex-1">{success}</div>
+              <button
+                type="button"
+                onClick={() => setSuccess("")}
+                className="rounded-lg p-1 hover:bg-emerald-100 dark:hover:bg-emerald-900/40"
+                aria-label="Dismiss success message"
+              >
                 <X size={16} />
               </button>
             </div>
@@ -625,700 +1088,629 @@ export default function DriversPage() {
               icon={Users}
               iconClass="bg-blue-50 text-blue-600 dark:bg-blue-400/10 dark:text-blue-400"
             />
+
             <StatCard
               title="Available"
               value={stats.available}
-              description="Ready for assignment"
-              icon={CheckCircle2}
+              description="Ready for assignments"
+              icon={UserCheck}
               iconClass="bg-emerald-50 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-400"
             />
+
             <StatCard
-              title="On Trip"
-              value={stats.onTrip}
-              description="Currently on the road"
+              title="Assigned"
+              value={stats.assigned}
+              description="Currently assigned"
               icon={Truck}
-              iconClass="bg-indigo-50 text-indigo-600 dark:bg-indigo-400/10 dark:text-indigo-400"
+              iconClass="bg-violet-50 text-violet-600 dark:bg-violet-400/10 dark:text-violet-400"
             />
+
             <StatCard
-              title="Off Duty"
-              value={stats.offDuty}
-              description={`${stats.suspended} suspended`}
-              icon={Clock3}
+              title="Inactive"
+              value={stats.inactive}
+              description="Not currently available"
+              icon={ShieldCheck}
               iconClass="bg-amber-50 text-amber-600 dark:bg-amber-400/10 dark:text-amber-400"
             />
           </div>
 
-          {/* Main list */}
-          <section className="overflow-visible rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div className="flex flex-col gap-4 border-b border-gray-100 p-5 dark:border-slate-800 sm:p-6">
-              <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+          {/* Driver table and filters */}
+          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <div className="border-b border-slate-200 p-4 dark:border-slate-800 sm:p-5">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                  <h2 className="text-lg font-bold">All Drivers</h2>
-                  <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                    Drivers
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                     {filteredDrivers.length}{" "}
-                    {filteredDrivers.length === 1 ? "driver" : "drivers"} shown
+                    {filteredDrivers.length === 1 ? "driver" : "drivers"} found
                   </p>
                 </div>
-                <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-slate-400">
-                  <Activity size={15} />
-                  Live data from Driver Service
-                </div>
-              </div>
 
-              <div className="flex flex-col gap-3 md:flex-row">
-                <div className="relative flex-1">
-                  <Search
-                    size={18}
-                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"
-                  />
-                  <input
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Search name, phone, email, or license..."
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/15 dark:border-slate-700 dark:bg-slate-950 dark:focus:bg-slate-950"
-                  />
-                </div>
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <div className="relative min-w-0 sm:w-72">
+                    <Search
+                      size={17}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                    />
+                    <input
+                      type="search"
+                      value={search}
+                      onChange={(event) => setSearch(event.target.value)}
+                      placeholder="Search drivers..."
+                      className={`${inputClass} pl-9`}
+                      aria-label="Search drivers"
+                    />
+                  </div>
 
-                <div className="relative md:w-56">
-                  <Filter
-                    size={16}
-                    className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"
-                  />
-                  <select
-                    value={statusFilter}
-                    onChange={(event) =>
-                      setStatusFilter(
-                        event.target.value as "all" | DriverStatus,
-                      )
-                    }
-                    className="w-full appearance-none rounded-xl border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-9 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 dark:border-slate-700 dark:bg-slate-950"
-                  >
-                    <option value="all">All statuses</option>
-                    {STATUSES.map((status) => (
-                      <option key={status} value={status}>
-                        {statusLabels[status]}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown
-                    size={15}
-                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
-                  />
+                  <div className="relative sm:w-48">
+                    <Filter
+                      size={16}
+                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                    />
+                    <select
+                      value={statusFilter}
+                      onChange={(event) =>
+                        setStatusFilter(
+                          event.target.value as DriverStatus | "all",
+                        )
+                      }
+                      className={`${inputClass} appearance-none pl-9 pr-9`}
+                      aria-label="Filter by status"
+                    >
+                      <option value="all">All statuses</option>
+                      {STATUS_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown
+                      size={15}
+                      className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
 
-            {loading ? (
-              <div className="flex min-h-72 flex-col items-center justify-center gap-3 p-8">
-                <Loader2 className="animate-spin text-blue-600" size={30} />
-                <p className="text-sm text-gray-500 dark:text-slate-400">
-                  Loading drivers...
-                </p>
-              </div>
-            ) : error && drivers.length === 0 ? (
-              <div className="flex min-h-72 flex-col items-center justify-center p-8 text-center">
-                <div className="rounded-2xl bg-red-50 p-4 text-red-600 dark:bg-red-400/10 dark:text-red-400">
-                  <AlertCircle size={28} />
+            {/* Desktop table */}
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full min-w-[900px] text-left">
+                <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500 dark:bg-slate-950/60 dark:text-slate-400">
+                  <tr>
+                    <th className="px-5 py-4 font-semibold">Driver</th>
+                    <th className="px-5 py-4 font-semibold">Contact</th>
+                    <th className="px-5 py-4 font-semibold">License</th>
+                    <th className="px-5 py-4 font-semibold">Expiry</th>
+                    <th className="px-5 py-4 font-semibold">Status</th>
+                    <th className="px-5 py-4 text-right font-semibold">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {loading && drivers.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-5 py-16 text-center">
+                        <Loader2
+                          size={25}
+                          className="mx-auto animate-spin text-blue-600"
+                        />
+                        <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
+                          Loading drivers...
+                        </p>
+                      </td>
+                    </tr>
+                  ) : paginatedDrivers.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-5 py-16 text-center">
+                        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                          <Users size={22} />
+                        </div>
+                        <p className="mt-3 font-semibold text-slate-800 dark:text-slate-200">
+                          No drivers found
+                        </p>
+                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                          Try changing your filters or add a new driver.
+                        </p>
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedDrivers.map((driver) => {
+                      const id = getDriverId(driver);
+                      const expired = isLicenseExpired(driver.licenseExpiry);
+
+                      return (
+                        <tr
+                          key={id || `${driver.firstName}-${driver.lastName}`}
+                          className="transition hover:bg-slate-50/80 dark:hover:bg-slate-800/40"
+                        >
+                          <td className="px-5 py-4">
+                            <div className="flex items-center gap-3">
+                              <DriverAvatar
+                                driver={driver}
+                                onClick={() => openAvatarModal(driver)}
+                              />
+
+                              <div className="min-w-0">
+                                <button
+                                  type="button"
+                                  onClick={() => openDetailsModal(driver)}
+                                  className="block max-w-[220px] truncate text-sm font-semibold text-slate-900 hover:text-blue-600 dark:text-white dark:hover:text-blue-400"
+                                >
+                                  {getDriverName(driver) || "Unnamed Driver"}
+                                </button>
+                                <p className="mt-1 max-w-[220px] truncate text-xs text-slate-500 dark:text-slate-400">
+                                  {driver.email || "No email provided"}
+                                </p>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <div className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+                              <Phone size={14} className="text-slate-400" />
+                              {driver.phone || "—"}
+                            </div>
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                              {driver.licenseNumber || "—"}
+                            </p>
+                            <p className="mt-1 text-xs capitalize text-slate-500 dark:text-slate-400">
+                              {driver.licenseType.replace(/_/g, " ")}
+                            </p>
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <div
+                              className={`flex items-center gap-2 text-sm ${
+                                expired
+                                  ? "font-medium text-red-600 dark:text-red-400"
+                                  : "text-slate-700 dark:text-slate-300"
+                              }`}
+                            >
+                              <CalendarDays
+                                size={14}
+                                className="shrink-0 text-slate-400"
+                              />
+                              {formatDate(driver.licenseExpiry)}
+                            </div>
+                            {expired && (
+                              <p className="mt-1 text-xs text-red-500">
+                                License expired
+                              </p>
+                            )}
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <StatusBadge status={driver.status} />
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                type="button"
+                                onClick={() => openDetailsModal(driver)}
+                                title="View driver"
+                                aria-label={`View ${getDriverName(driver)}`}
+                                className="rounded-lg p-2 text-slate-500 transition hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-400/10 dark:hover:text-blue-400"
+                              >
+                                <Eye size={17} />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => openEditModal(driver)}
+                                title="Edit driver"
+                                aria-label={`Edit ${getDriverName(driver)}`}
+                                className="rounded-lg p-2 text-slate-500 transition hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-400/10 dark:hover:text-blue-400"
+                              >
+                                <Edit size={17} />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => setDeleteTarget(driver)}
+                                title="Delete driver"
+                                aria-label={`Delete ${getDriverName(driver)}`}
+                                className="rounded-lg p-2 text-slate-500 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-400/10 dark:hover:text-red-400"
+                              >
+                                <Trash2 size={17} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile cards */}
+            <div className="divide-y divide-slate-100 md:hidden dark:divide-slate-800">
+              {loading && drivers.length === 0 ? (
+                <div className="px-5 py-14 text-center">
+                  <Loader2
+                    size={25}
+                    className="mx-auto animate-spin text-blue-600"
+                  />
+                  <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
+                    Loading drivers...
+                  </p>
                 </div>
-                <h3 className="mt-4 font-semibold">Could not load drivers</h3>
-                <p className="mt-2 max-w-md text-sm text-gray-500 dark:text-slate-400">
-                  {error}
-                </p>
+              ) : paginatedDrivers.length === 0 ? (
+                <div className="px-5 py-14 text-center">
+                  <Users size={26} className="mx-auto text-slate-400" />
+                  <p className="mt-3 font-semibold text-slate-800 dark:text-slate-200">
+                    No drivers found
+                  </p>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                    Try changing your search or status filter.
+                  </p>
+                </div>
+              ) : (
+                paginatedDrivers.map((driver) => (
+                  <article
+                    key={getDriverId(driver) || getDriverName(driver)}
+                    className="p-4"
+                  >
+                    <div className="flex items-start gap-3">
+                      <DriverAvatar
+                        driver={driver}
+                        onClick={() => openAvatarModal(driver)}
+                      />
+
+                      <div className="min-w-0 flex-1">
+                        <button
+                          type="button"
+                          onClick={() => openDetailsModal(driver)}
+                          className="block max-w-full truncate text-left font-semibold text-slate-900 dark:text-white"
+                        >
+                          {getDriverName(driver) || "Unnamed Driver"}
+                        </button>
+
+                        <p className="mt-1 truncate text-sm text-slate-500 dark:text-slate-400">
+                          {driver.email || "No email provided"}
+                        </p>
+
+                        <div className="mt-2">
+                          <StatusBadge status={driver.status} />
+                        </div>
+                      </div>
+
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(driver)}
+                          className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                          aria-label="Edit driver"
+                        >
+                          <Edit size={16} />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setDeleteTarget(driver)}
+                          className="rounded-lg p-2 text-slate-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-400/10"
+                          aria-label="Delete driver"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-950/60">
+                      <div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          Phone
+                        </p>
+                        <p className="mt-1 truncate text-sm font-medium text-slate-800 dark:text-slate-200">
+                          {driver.phone || "—"}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          License
+                        </p>
+                        <p className="mt-1 truncate text-sm font-medium text-slate-800 dark:text-slate-200">
+                          {driver.licenseNumber || "—"}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          License type
+                        </p>
+                        <p className="mt-1 truncate text-sm font-medium capitalize text-slate-800 dark:text-slate-200">
+                          {driver.licenseType.replace(/_/g, " ")}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          License expiry
+                        </p>
+                        <p
+                          className={`mt-1 text-sm font-medium ${
+                            isLicenseExpired(driver.licenseExpiry)
+                              ? "text-red-600 dark:text-red-400"
+                              : "text-slate-800 dark:text-slate-200"
+                          }`}
+                        >
+                          {formatDate(driver.licenseExpiry)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex items-center justify-between">
+                      <button
+                        type="button"
+                        onClick={() => openDetailsModal(driver)}
+                        className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                      >
+                        <Eye size={15} />
+                        View details
+                      </button>
+
+                      <select
+                        aria-label={`Change status for ${getDriverName(driver)}`}
+                        value={driver.status}
+                        onChange={(event) =>
+                          void handleStatusChange(
+                            driver,
+                            event.target.value as DriverStatus,
+                          )
+                        }
+                        className="max-w-36 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                      >
+                        {STATUS_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
+
+            {/* Pagination */}
+            <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Showing{" "}
+                <span className="font-semibold text-slate-700 dark:text-slate-200">
+                  {filteredDrivers.length === 0
+                    ? 0
+                    : (page - 1) * PAGE_SIZE + 1}
+                  {"–"}
+                  {Math.min(page * PAGE_SIZE, filteredDrivers.length)}
+                </span>{" "}
+                of{" "}
+                <span className="font-semibold text-slate-700 dark:text-slate-200">
+                  {filteredDrivers.length}
+                </span>{" "}
+                drivers
+              </p>
+
+              <div className="flex items-center gap-2">
                 <button
-                  onClick={() => void fetchDrivers()}
-                  className="mt-5 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+                  type="button"
+                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                  disabled={page <= 1}
+                  className={secondaryButtonClass}
+                  aria-label="Previous page"
                 >
-                  Try again
+                  <ChevronLeft size={16} />
+                  Previous
+                </button>
+
+                <span className="min-w-20 text-center text-sm text-slate-500 dark:text-slate-400">
+                  Page {page} of {totalPages}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPage((current) => Math.min(totalPages, current + 1))
+                  }
+                  disabled={page >= totalPages}
+                  className={secondaryButtonClass}
+                  aria-label="Next page"
+                >
+                  Next
+                  <ChevronRight size={16} />
                 </button>
               </div>
-            ) : filteredDrivers.length === 0 ? (
-              <div className="flex min-h-72 flex-col items-center justify-center p-8 text-center">
-                <div className="rounded-2xl bg-blue-50 p-4 text-blue-600 dark:bg-blue-400/10 dark:text-blue-400">
-                  <UserRound size={28} />
-                </div>
-                <h3 className="mt-4 font-semibold">
-                  {drivers.length === 0 ? "No drivers yet" : "No drivers found"}
-                </h3>
-                <p className="mt-2 max-w-md text-sm text-gray-500 dark:text-slate-400">
-                  {drivers.length === 0
-                    ? "Add your first driver to start managing licenses, availability, and contact information."
-                    : "Try changing your search or status filter."}
-                </p>
-                {drivers.length === 0 ? (
-                  <button
-                    onClick={openCreateModal}
-                    className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
-                  >
-                    <Plus size={16} />
-                    Add your first driver
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => {
-                      setSearch("");
-                      setStatusFilter("all");
-                    }}
-                    className="mt-5 text-sm font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400"
-                  >
-                    Clear filters
-                  </button>
-                )}
-              </div>
-            ) : (
-              <>
-                {/* Desktop table */}
-                <div className="hidden overflow-x-auto lg:block">
-                  <table className="w-full min-w-[900px] text-left">
-                    <thead className="bg-gray-50 text-xs uppercase tracking-wider text-gray-500 dark:bg-slate-950/60 dark:text-slate-400">
-                      <tr>
-                        <th className="px-6 py-4 font-semibold">Driver</th>
-                        <th className="px-6 py-4 font-semibold">Contact</th>
-                        <th className="px-6 py-4 font-semibold">License</th>
-                        <th className="px-6 py-4 font-semibold">Expiry Date</th>
-                        <th className="px-6 py-4 font-semibold">Status</th>
-                        <th className="px-6 py-4 text-right font-semibold">
-                          Actions
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
-                      {filteredDrivers.map((driver) => {
-                        const id = driverId(driver);
-
-                        return (
-                          <tr
-                            key={id || `${driver.firstName}-${driver.lastName}`}
-                            className="transition hover:bg-gray-50/80 dark:hover:bg-slate-800/40"
-                          >
-                            <td className="px-6 py-4">
-                              <div className="flex items-center gap-3">
-                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-sm font-bold text-blue-700 dark:bg-blue-400/10 dark:text-blue-400">
-                                  {driver.firstName?.[0]?.toUpperCase()}
-                                  {driver.lastName?.[0]?.toUpperCase()}
-                                </div>
-                                <div>
-                                  <p className="font-semibold text-gray-900 dark:text-white">
-                                    {driver.firstName} {driver.lastName}
-                                  </p>
-                                  <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
-                                    Joined {formatDate(driver.joiningDate)}
-                                  </p>
-                                </div>
-                              </div>
-                            </td>
-
-                            <td className="px-6 py-4">
-                              <div className="space-y-1.5 text-sm">
-                                <div className="flex items-center gap-2 text-gray-700 dark:text-slate-300">
-                                  <Phone size={13} className="text-gray-400" />
-                                  {driver.phone || "—"}
-                                </div>
-                                <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-slate-400">
-                                  <Mail size={13} />
-                                  <span className="max-w-44 truncate">
-                                    {driver.email || "No email"}
-                                  </span>
-                                </div>
-                              </div>
-                            </td>
-
-                            <td className="px-6 py-4">
-                              <p className="text-sm font-medium text-gray-800 dark:text-slate-200">
-                                {driver.licenseNumber}
-                              </p>
-                              <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
-                                {displayLicenseType(driver.licenseType)}
-                              </p>
-                            </td>
-
-                            <td className="px-6 py-4 text-sm text-gray-600 dark:text-slate-300">
-                              <span className="inline-flex items-center gap-2">
-                                <CalendarDays
-                                  size={14}
-                                  className="text-gray-400"
-                                />
-                                {formatDate(driver.licenseExpiry)}
-                              </span>
-                            </td>
-
-                            <td className="px-6 py-4">
-                              <div className="relative inline-flex">
-                                <select
-                                  aria-label={`Status for ${driver.firstName} ${driver.lastName}`}
-                                  value={driver.status}
-                                  disabled={updatingStatusId === id || !id}
-                                  onChange={(event) =>
-                                    void handleStatusChange(
-                                      id,
-                                      event.target.value as DriverStatus,
-                                    )
-                                  }
-                                  className={`max-w-36 cursor-pointer appearance-none rounded-full px-3 py-1.5 pr-7 text-xs font-semibold ring-1 ring-inset outline-none disabled:opacity-50 ${statusStyles[driver.status]}`}
-                                >
-                                  {STATUSES.map((status) => (
-                                    <option key={status} value={status}>
-                                      {statusLabels[status]}
-                                    </option>
-                                  ))}
-                                </select>
-                                <ChevronDown
-                                  size={12}
-                                  className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2"
-                                />
-                              </div>
-                            </td>
-
-                            <td className="px-6 py-4 text-right">
-                              <div className="flex items-center justify-end gap-1">
-                                <button
-                                  title="View driver"
-                                  onClick={() => setViewingDriver(driver)}
-                                  className="rounded-lg p-2 text-gray-500 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-400/10 dark:hover:text-blue-400"
-                                >
-                                  <Eye size={17} />
-                                </button>
-                                <button
-                                  title="Edit driver"
-                                  onClick={() => openEditModal(driver)}
-                                  className="rounded-lg p-2 text-gray-500 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-400/10 dark:hover:text-blue-400"
-                                >
-                                  <Edit3 size={17} />
-                                </button>
-                                <button
-                                  title="Delete driver"
-                                  disabled={deletingId === id}
-                                  onClick={() => void handleDelete(driver)}
-                                  className="rounded-lg p-2 text-gray-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:hover:bg-red-400/10 dark:hover:text-red-400"
-                                >
-                                  {deletingId === id ? (
-                                    <Loader2
-                                      size={17}
-                                      className="animate-spin"
-                                    />
-                                  ) : (
-                                    <Trash2 size={17} />
-                                  )}
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Mobile and tablet cards */}
-                <div className="grid gap-4 p-4 sm:grid-cols-2 lg:hidden">
-                  {filteredDrivers.map((driver) => {
-                    const id = driverId(driver);
-
-                    return (
-                      <article
-                        key={id || `${driver.firstName}-${driver.lastName}`}
-                        className="rounded-xl border border-gray-200 p-4 dark:border-slate-800"
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 font-bold text-blue-700 dark:bg-blue-400/10 dark:text-blue-400">
-                            {driver.firstName?.[0]?.toUpperCase()}
-                            {driver.lastName?.[0]?.toUpperCase()}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <h3 className="truncate font-semibold">
-                              {driver.firstName} {driver.lastName}
-                            </h3>
-                            <p className="mt-1 truncate text-xs text-gray-500 dark:text-slate-400">
-                              {driver.licenseNumber}
-                            </p>
-                            <span
-                              className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${statusStyles[driver.status]}`}
-                            >
-                              {statusLabels[driver.status]}
-                            </span>
-                          </div>
-                          <button
-                            aria-label="View driver details"
-                            onClick={() => setViewingDriver(driver)}
-                            className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-800"
-                          >
-                            <Eye size={17} />
-                          </button>
-                        </div>
-
-                        <div className="mt-4 space-y-2 border-t border-gray-100 pt-3 text-sm dark:border-slate-800">
-                          <p className="flex items-center gap-2 text-gray-600 dark:text-slate-300">
-                            <Phone
-                              size={14}
-                              className="shrink-0 text-gray-400"
-                            />
-                            {driver.phone}
-                          </p>
-                          <p className="flex items-center gap-2 break-all text-gray-600 dark:text-slate-300">
-                            <Mail
-                              size={14}
-                              className="shrink-0 text-gray-400"
-                            />
-                            {driver.email || "No email"}
-                          </p>
-                          <p className="flex items-center gap-2 text-gray-600 dark:text-slate-300">
-                            <ShieldCheck
-                              size={14}
-                              className="shrink-0 text-gray-400"
-                            />
-                            {displayLicenseType(driver.licenseType)} · Expires{" "}
-                            {formatDate(driver.licenseExpiry)}
-                          </p>
-                        </div>
-
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          <select
-                            aria-label="Change driver status"
-                            value={driver.status}
-                            disabled={updatingStatusId === id || !id}
-                            onChange={(event) =>
-                              void handleStatusChange(
-                                id,
-                                event.target.value as DriverStatus,
-                              )
-                            }
-                            className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 py-2 text-xs dark:border-slate-700 dark:bg-slate-950"
-                          >
-                            {STATUSES.map((status) => (
-                              <option key={status} value={status}>
-                                {statusLabels[status]}
-                              </option>
-                            ))}
-                          </select>
-                          <button
-                            onClick={() => openEditModal(driver)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold hover:bg-gray-50 dark:border-slate-700 dark:hover:bg-slate-800"
-                          >
-                            <Edit3 size={14} />
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => void handleDelete(driver)}
-                            disabled={deletingId === id}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-red-900/50 dark:hover:bg-red-950/30"
-                          >
-                            <Trash2 size={14} />
-                            Delete
-                          </button>
-                        </div>
-                      </article>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-
-            {!loading && filteredDrivers.length > 0 && (
-              <div className="flex flex-col gap-2 border-t border-gray-100 px-5 py-4 text-xs text-gray-500 dark:border-slate-800 dark:text-slate-400 sm:flex-row sm:items-center sm:justify-between">
-                <span>
-                  Showing {filteredDrivers.length} of {drivers.length} drivers
-                </span>
-                <span>
-                  Driver data is scoped by your authenticated account.
-                </span>
-              </div>
-            )}
+            </div>
           </section>
+        </main>
+      </div>
 
-          {/* Additional summary */}
-          <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3">
-              <div className="rounded-xl bg-blue-50 p-3 text-blue-600 dark:bg-blue-400/10 dark:text-blue-400">
-                <ShieldCheck size={20} />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold">Driver compliance</h3>
-                <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
-                  Keep license details and driver contact information up to
-                  date.
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-slate-400">
-              <span className="font-semibold text-gray-900 dark:text-white">
-                {stats.suspended}
-              </span>
-              suspended driver{stats.suspended === 1 ? "" : "s"}
-              <ArrowUpRight size={15} />
-            </div>
-          </div>
-        </div>
-      </main>
+      {/* -------------------------------------------------------------------- */}
+      {/*                         Create / Edit modal                          */}
+      {/* -------------------------------------------------------------------- */}
 
-      {/* Create / edit modal */}
-      {modalOpen && (
+      {(modal === "create" || modal === "edit") && (
         <div
-          className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-slate-950/60 p-3 backdrop-blur-sm sm:items-center sm:p-6"
+          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/60 p-3 backdrop-blur-sm sm:p-6"
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget && !submitting) {
-              setModalOpen(false);
-            }
+            if (event.target === event.currentTarget) closeModal();
           }}
         >
           <section
             role="dialog"
             aria-modal="true"
             aria-labelledby="driver-form-title"
-            className="my-4 w-full max-w-3xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900 sm:my-0"
+            className="my-auto w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900"
           >
-            <div className="flex items-start justify-between border-b border-gray-100 px-5 py-5 dark:border-slate-800 sm:px-7">
+            <div className="flex items-start justify-between border-b border-slate-200 p-5 dark:border-slate-800 sm:p-6">
               <div>
-                <h2 id="driver-form-title" className="text-xl font-bold">
-                  {editingDriver ? "Edit Driver" : "Add New Driver"}
+                <h2
+                  id="driver-form-title"
+                  className="text-xl font-bold text-slate-900 dark:text-white"
+                >
+                  {modal === "edit" ? "Edit Driver" : "Add New Driver"}
                 </h2>
-                <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
-                  {editingDriver
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  {modal === "edit"
                     ? "Update the driver's information."
-                    : "Enter the driver's personal and license details."}
+                    : "Enter the information to register a driver."}
                 </p>
               </div>
+
               <button
-                onClick={() => setModalOpen(false)}
+                type="button"
+                onClick={closeModal}
                 disabled={submitting}
                 aria-label="Close form"
-                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 disabled:opacity-50 dark:hover:bg-slate-800"
+                className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
               >
                 <X size={20} />
               </button>
             </div>
 
             <form onSubmit={handleSubmit}>
-              <div className="max-h-[65vh] space-y-7 overflow-y-auto px-5 py-6 sm:px-7">
-                {error && (
-                  <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
-                    <AlertCircle size={17} className="mt-0.5 shrink-0" />
-                    <span>{error}</span>
-                  </div>
-                )}
-
-                <div>
-                  <h3 className="mb-4 text-sm font-bold">
+              <div className="grid max-h-[65vh] grid-cols-1 gap-5 overflow-y-auto p-5 sm:grid-cols-2 sm:p-6">
+                <div className="sm:col-span-2">
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                     Personal information
-                  </h3>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <label className={labelClass}>
-                      First name *
-                      <input
-                        required
-                        minLength={2}
-                        maxLength={50}
-                        value={form.firstName}
-                        onChange={(e) =>
-                          updateField("firstName", e.target.value)
-                        }
-                        className={inputClass}
-                        placeholder="e.g. Muhammad"
-                      />
-                    </label>
-
-                    <label className={labelClass}>
-                      Last name *
-                      <input
-                        required
-                        minLength={2}
-                        maxLength={50}
-                        value={form.lastName}
-                        onChange={(e) =>
-                          updateField("lastName", e.target.value)
-                        }
-                        className={inputClass}
-                        placeholder="e.g. Ahmed"
-                      />
-                    </label>
-
-                    <label className={labelClass}>
-                      Phone number *
-                      <input
-                        required
-                        minLength={5}
-                        maxLength={30}
-                        type="tel"
-                        value={form.phone}
-                        onChange={(e) => updateField("phone", e.target.value)}
-                        className={inputClass}
-                        placeholder="+92 300 1234567"
-                      />
-                    </label>
-
-                    <label className={labelClass}>
-                      Email address
-                      <input
-                        type="email"
-                        value={form.email}
-                        onChange={(e) => updateField("email", e.target.value)}
-                        className={inputClass}
-                        placeholder="driver@example.com"
-                      />
-                    </label>
-
-                    <label className={labelClass}>
-                      Date of birth
-                      <input
-                        type="date"
-                        value={form.dateOfBirth}
-                        onChange={(e) =>
-                          updateField("dateOfBirth", e.target.value)
-                        }
-                        className={inputClass}
-                      />
-                    </label>
-
-                    <label className={labelClass}>
-                      Joining date
-                      <input
-                        type="date"
-                        value={form.joiningDate}
-                        onChange={(e) =>
-                          updateField("joiningDate", e.target.value)
-                        }
-                        className={inputClass}
-                      />
-                    </label>
-
-                    <label className={`${labelClass} sm:col-span-2`}>
-                      Home address
-                      <textarea
-                        rows={2}
-                        maxLength={500}
-                        value={form.address}
-                        onChange={(e) => updateField("address", e.target.value)}
-                        className={inputClass}
-                        placeholder="Enter full address"
-                      />
-                    </label>
-                  </div>
-                </div>
-
-                <div className="border-t border-gray-100 pt-6 dark:border-slate-800">
-                  <h3 className="mb-4 text-sm font-bold">
-                    License information
-                  </h3>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <label className={labelClass}>
-                      License number *
-                      <input
-                        required
-                        minLength={2}
-                        maxLength={50}
-                        value={form.licenseNumber}
-                        onChange={(e) =>
-                          updateField("licenseNumber", e.target.value)
-                        }
-                        className={inputClass}
-                        placeholder="Enter license number"
-                      />
-                    </label>
-
-                    <label className={labelClass}>
-                      License type *
-                      <select
-                        required
-                        value={form.licenseType}
-                        onChange={(e) =>
-                          updateField(
-                            "licenseType",
-                            e.target.value as LicenseType,
-                          )
-                        }
-                        className={inputClass}
-                      >
-                        {LICENSE_TYPES.map((type) => (
-                          <option key={type} value={type}>
-                            {type.toUpperCase()}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label className={labelClass}>
-                      License expiry date *
-                      <input
-                        required
-                        type="date"
-                        value={form.licenseExpiry}
-                        onChange={(e) =>
-                          updateField("licenseExpiry", e.target.value)
-                        }
-                        className={inputClass}
-                      />
-                    </label>
-
-                    <label className={labelClass}>
-                      Driver status
-                      <select
-                        value={form.status}
-                        onChange={(e) =>
-                          updateField("status", e.target.value as DriverStatus)
-                        }
-                        className={inputClass}
-                      >
-                        {STATUSES.map((status) => (
-                          <option key={status} value={status}>
-                            {statusLabels[status]}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                </div>
-
-                <div className="border-t border-gray-100 pt-6 dark:border-slate-800">
-                  <h3 className="mb-1 text-sm font-bold">Emergency contact</h3>
-                  <p className="mb-4 text-xs text-gray-500 dark:text-slate-400">
-                    Optional details to contact in an emergency.
                   </p>
-
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <label className={labelClass}>
-                      Contact name
-                      <input
-                        value={form.emergencyName}
-                        onChange={(e) =>
-                          updateField("emergencyName", e.target.value)
-                        }
-                        className={inputClass}
-                        placeholder="Full name"
-                      />
-                    </label>
-
-                    <label className={labelClass}>
-                      Contact phone
-                      <input
-                        type="tel"
-                        value={form.emergencyPhone}
-                        onChange={(e) =>
-                          updateField("emergencyPhone", e.target.value)
-                        }
-                        className={inputClass}
-                        placeholder="Phone number"
-                      />
-                    </label>
-
-                    <label className={`${labelClass} sm:col-span-2`}>
-                      Relationship
-                      <input
-                        value={form.emergencyRelationship}
-                        onChange={(e) =>
-                          updateField("emergencyRelationship", e.target.value)
-                        }
-                        className={inputClass}
-                        placeholder="e.g. Spouse, Parent"
-                      />
-                    </label>
-                  </div>
                 </div>
+
+                <Field label="First name" required>
+                  <input
+                    className={inputClass}
+                    value={form.firstName}
+                    onChange={(event) =>
+                      updateForm("firstName", event.target.value)
+                    }
+                    placeholder="Enter first name"
+                    required
+                    autoComplete="given-name"
+                  />
+                </Field>
+
+                <Field label="Last name" required>
+                  <input
+                    className={inputClass}
+                    value={form.lastName}
+                    onChange={(event) =>
+                      updateForm("lastName", event.target.value)
+                    }
+                    placeholder="Enter last name"
+                    required
+                    autoComplete="family-name"
+                  />
+                </Field>
+
+                <Field label="Email address">
+                  <input
+                    className={inputClass}
+                    type="email"
+                    value={form.email}
+                    onChange={(event) =>
+                      updateForm("email", event.target.value)
+                    }
+                    placeholder="driver@example.com"
+                    autoComplete="email"
+                  />
+                </Field>
+
+                <Field label="Phone number" required>
+                  <input
+                    className={inputClass}
+                    type="tel"
+                    value={form.phone}
+                    onChange={(event) =>
+                      updateForm("phone", event.target.value)
+                    }
+                    placeholder="Enter phone number"
+                    required
+                    autoComplete="tel"
+                  />
+                </Field>
+
+                <div className="sm:col-span-2 mt-1">
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    License information
+                  </p>
+                </div>
+
+                <Field label="License number" required>
+                  <input
+                    className={inputClass}
+                    value={form.licenseNumber}
+                    onChange={(event) =>
+                      updateForm("licenseNumber", event.target.value)
+                    }
+                    placeholder="Enter license number"
+                    required
+                  />
+                </Field>
+
+                <Field label="License type" required>
+                  <select
+                    className={inputClass}
+                    value={form.licenseType}
+                    onChange={(event) =>
+                      updateForm(
+                        "licenseType",
+                        event.target.value as LicenseType,
+                      )
+                    }
+                    required
+                  >
+                    {LICENSE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+
+                <Field label="License expiry">
+                  <input
+                    className={inputClass}
+                    type="date"
+                    value={form.licenseExpiry}
+                    onChange={(event) =>
+                      updateForm("licenseExpiry", event.target.value)
+                    }
+                  />
+                </Field>
+
+                <Field label="Driver status" required>
+                  <select
+                    className={inputClass}
+                    value={form.status}
+                    onChange={(event) =>
+                      updateForm("status", event.target.value as DriverStatus)
+                    }
+                    required
+                  >
+                    {STATUS_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
               </div>
 
-              <div className="flex flex-col-reverse gap-3 border-t border-gray-100 bg-gray-50 px-5 py-4 dark:border-slate-800 dark:bg-slate-950/50 sm:flex-row sm:justify-end sm:px-7">
+              <div className="flex flex-col-reverse gap-3 border-t border-slate-200 p-5 dark:border-slate-800 sm:flex-row sm:justify-end sm:p-6">
                 <button
                   type="button"
+                  onClick={closeModal}
                   disabled={submitting}
-                  onClick={() => setModalOpen(false)}
-                  className="rounded-xl border border-gray-200 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                  className={secondaryButtonClass}
                 >
                   Cancel
                 </button>
@@ -1326,19 +1718,18 @@ export default function DriversPage() {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  className={primaryButtonClass}
                 >
                   {submitting ? (
-                    <>
-                      <Loader2 size={16} className="animate-spin" />
-                      Saving...
-                    </>
+                    <Loader2 size={17} className="animate-spin" />
                   ) : (
-                    <>
-                      <CheckCircle2 size={16} />
-                      {editingDriver ? "Save Changes" : "Create Driver"}
-                    </>
+                    <Check size={17} />
                   )}
+                  {submitting
+                    ? "Saving..."
+                    : modal === "edit"
+                      ? "Save Changes"
+                      : "Create Driver"}
                 </button>
               </div>
             </form>
@@ -1346,145 +1737,384 @@ export default function DriversPage() {
         </div>
       )}
 
-      {/* Driver details modal */}
-      {viewingDriver && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4 backdrop-blur-sm">
+      {/* -------------------------------------------------------------------- */}
+      {/*                          Driver details modal                        */}
+      {/* -------------------------------------------------------------------- */}
+
+      {modal === "details" && selectedDriver && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-slate-950/60 p-3 backdrop-blur-sm sm:p-6"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeModal();
+          }}
+        >
           <section
             role="dialog"
             aria-modal="true"
-            aria-labelledby="driver-detail-title"
-            className="my-4 w-full max-w-xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900"
+            aria-labelledby="driver-details-title"
+            className="my-auto flex max-h-[95dvh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900"
           >
-            <div className="flex items-start justify-between border-b border-gray-100 p-5 dark:border-slate-800 sm:p-6">
-              <div className="flex items-center gap-3">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-lg font-bold text-blue-700 dark:bg-blue-400/10 dark:text-blue-400">
-                  {viewingDriver.firstName?.[0]?.toUpperCase()}
-                  {viewingDriver.lastName?.[0]?.toUpperCase()}
-                </div>
-                <div>
-                  <h2 id="driver-detail-title" className="text-xl font-bold">
-                    {viewingDriver.firstName} {viewingDriver.lastName}
-                  </h2>
-                  <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
-                    Driver profile
-                  </p>
-                  <span
-                    className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${statusStyles[viewingDriver.status]}`}
-                  >
-                    {statusLabels[viewingDriver.status]}
-                  </span>
-                </div>
-              </div>
+            {/* Header */}
+            <div className="relative h-28 shrink-0 bg-gradient-to-r from-blue-700 to-indigo-600">
               <button
-                onClick={() => setViewingDriver(null)}
+                type="button"
+                onClick={closeModal}
                 aria-label="Close driver details"
-                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-800"
+                className="absolute right-4 top-4 rounded-xl bg-white/15 p-2 text-white transition hover:bg-white/25"
               >
-                <X size={20} />
+                <X size={19} />
               </button>
             </div>
 
-            <div className="grid grid-cols-1 gap-5 p-5 sm:grid-cols-2 sm:p-6">
-              <div>
-                <p className="text-xs text-gray-500 dark:text-slate-400">
-                  Phone
-                </p>
-                <p className="mt-1 break-words text-sm font-medium">
-                  {viewingDriver.phone || "—"}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 dark:text-slate-400">
-                  Email
-                </p>
-                <p className="mt-1 break-all text-sm font-medium">
-                  {viewingDriver.email || "—"}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 dark:text-slate-400">
-                  License number
-                </p>
-                <p className="mt-1 text-sm font-medium">
-                  {viewingDriver.licenseNumber || "—"}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 dark:text-slate-400">
-                  License type
-                </p>
-                <p className="mt-1 text-sm font-medium">
-                  {viewingDriver.licenseType
-                    ? displayLicenseType(viewingDriver.licenseType)
-                    : "—"}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 dark:text-slate-400">
-                  License expiry
-                </p>
-                <p className="mt-1 text-sm font-medium">
-                  {formatDate(viewingDriver.licenseExpiry)}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 dark:text-slate-400">
-                  Date of birth
-                </p>
-                <p className="mt-1 text-sm font-medium">
-                  {formatDate(viewingDriver.dateOfBirth)}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 dark:text-slate-400">
-                  Joining date
-                </p>
-                <p className="mt-1 text-sm font-medium">
-                  {formatDate(viewingDriver.joiningDate)}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 dark:text-slate-400">
-                  Emergency contact
-                </p>
-                <p className="mt-1 text-sm font-medium">
-                  {viewingDriver.emergencyContact?.name || "—"}
-                </p>
-                {viewingDriver.emergencyContact?.phone && (
-                  <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
-                    {viewingDriver.emergencyContact.phone}
-                  </p>
-                )}
-                {viewingDriver.emergencyContact?.relationship && (
-                  <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
-                    {viewingDriver.emergencyContact.relationship}
-                  </p>
-                )}
-              </div>
-              <div className="sm:col-span-2">
-                <p className="text-xs text-gray-500 dark:text-slate-400">
-                  Address
-                </p>
-                <p className="mt-1 flex items-start gap-2 text-sm font-medium">
-                  <MapPin size={15} className="mt-0.5 shrink-0 text-gray-400" />
-                  {viewingDriver.address || "No address provided"}
-                </p>
+            {/* Scrollable content */}
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <div className="px-5 pb-6 sm:px-7">
+                {/* Profile and actions */}
+                <div className="relative z-10 -mt-8 flex min-h-[100px] flex-wrap items-end justify-between gap-3 pt-2">
+                  <DriverAvatar
+                    driver={selectedDriver}
+                    size="large"
+                    onClick={() => openAvatarModal(selectedDriver)}
+                  />
+
+                  <div className="flex flex-wrap gap-2 pb-1">
+                    <button
+                      type="button"
+                      onClick={() => openAvatarModal(selectedDriver)}
+                      className={secondaryButtonClass}
+                    >
+                      <ImagePlus size={16} />
+                      Photo
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => openEditModal(selectedDriver)}
+                      className={primaryButtonClass}
+                    >
+                      <Edit size={16} />
+                      Edit
+                    </button>
+                  </div>
+                </div>
+
+                {/* Driver identity */}
+                <h2
+                  id="driver-details-title"
+                  className="mt-4 break-words text-2xl font-bold text-slate-900 dark:text-white"
+                >
+                  {getDriverName(selectedDriver) || "Unnamed Driver"}
+                </h2>
+
+                <div className="mt-2">
+                  <StatusBadge status={selectedDriver.status} />
+                </div>
+
+                {/* Driver information */}
+                <div className="mt-6 space-y-4">
+                  <div className="flex items-start gap-3">
+                    <div className="rounded-xl bg-slate-100 p-2.5 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                      <Mail size={18} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Email address
+                      </p>
+                      <p className="mt-1 break-all text-sm font-medium text-slate-800 dark:text-slate-200">
+                        {selectedDriver.email || "Not provided"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3">
+                    <div className="rounded-xl bg-slate-100 p-2.5 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                      <Phone size={18} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Phone number
+                      </p>
+                      <p className="mt-1 break-words text-sm font-medium text-slate-800 dark:text-slate-200">
+                        {selectedDriver.phone || "Not provided"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3">
+                    <div className="rounded-xl bg-slate-100 p-2.5 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                      <FileText size={18} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        License number
+                      </p>
+                      <p className="mt-1 break-words text-sm font-medium text-slate-800 dark:text-slate-200">
+                        {selectedDriver.licenseNumber || "Not provided"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3">
+                    <div className="rounded-xl bg-slate-100 p-2.5 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                      <ShieldCheck size={18} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        License type
+                      </p>
+                      <p className="mt-1 text-sm font-medium capitalize text-slate-800 dark:text-slate-200">
+                        {selectedDriver.licenseType?.replace(/_/g, " ") ||
+                          "Not provided"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3">
+                    <div className="rounded-xl bg-slate-100 p-2.5 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                      <CalendarDays size={18} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        License expiry
+                      </p>
+                      <p
+                        className={`mt-1 text-sm font-medium ${
+                          isLicenseExpired(selectedDriver.licenseExpiry)
+                            ? "text-red-600 dark:text-red-400"
+                            : "text-slate-800 dark:text-slate-200"
+                        }`}
+                      >
+                        {selectedDriver.licenseExpiry
+                          ? formatDate(selectedDriver.licenseExpiry)
+                          : "Not provided"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {selectedDriver.createdAt && (
+                    <div className="flex items-start gap-3">
+                      <div className="rounded-xl bg-slate-100 p-2.5 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                        <Clock size={18} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          Registered on
+                        </p>
+                        <p className="mt-1 text-sm font-medium text-slate-800 dark:text-slate-200">
+                          {formatDate(selectedDriver.createdAt)}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Status management */}
+                <div className="mt-7 border-t border-slate-200 pt-5 dark:border-slate-800">
+                  <Field label="Update driver status">
+                    <select
+                      className={inputClass}
+                      value={selectedDriver.status}
+                      onChange={(event) => {
+                        const nextStatus = event.target.value as DriverStatus;
+
+                        setSelectedDriver((current) =>
+                          current
+                            ? { ...current, status: nextStatus }
+                            : current,
+                        );
+
+                        void handleStatusChange(selectedDriver, nextStatus);
+                      }}
+                    >
+                      {STATUS_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
               </div>
             </div>
 
-            <div className="flex flex-col-reverse gap-3 border-t border-gray-100 bg-gray-50 p-5 dark:border-slate-800 dark:bg-slate-950/50 sm:flex-row sm:justify-end sm:p-6">
+            {/* Footer */}
+            <div className="flex shrink-0 justify-end border-t border-slate-200 bg-white px-5 py-3 dark:border-slate-800 dark:bg-slate-900 sm:px-7">
               <button
-                onClick={() => setViewingDriver(null)}
-                className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-gray-100 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800"
+                type="button"
+                onClick={closeModal}
+                className={secondaryButtonClass}
               >
                 Close
               </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {/* -------------------------------------------------------------------- */}
+      {/*                        Profile photo upload                          */}
+      {/* -------------------------------------------------------------------- */}
+
+      {modal === "avatar" && selectedDriver && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-slate-950/60 p-3 backdrop-blur-sm sm:p-6"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeModal();
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="avatar-modal-title"
+            className="my-auto w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900"
+          >
+            <div className="flex items-start justify-between border-b border-slate-200 p-5 dark:border-slate-800">
+              <div>
+                <h2
+                  id="avatar-modal-title"
+                  className="text-lg font-bold text-slate-900 dark:text-white"
+                >
+                  Driver profile photo
+                </h2>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  {getDriverName(selectedDriver)}
+                </p>
+              </div>
+
               <button
-                onClick={() => openEditModal(viewingDriver)}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+                type="button"
+                onClick={closeModal}
+                disabled={uploading}
+                aria-label="Close photo upload"
+                className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
               >
-                <Edit3 size={16} />
-                Edit Driver
+                <X size={19} />
+              </button>
+            </div>
+
+            <form onSubmit={handleAvatarUpload} className="p-5 sm:p-6">
+              <div className="flex flex-col items-center">
+                {uploadPreview ? (
+                  <img
+                    src={uploadPreview}
+                    alt="Selected profile preview"
+                    className="h-28 w-28 rounded-2xl border border-slate-200 object-cover dark:border-slate-700"
+                  />
+                ) : (
+                  <DriverAvatar driver={selectedDriver} size="large" />
+                )}
+
+                <p className="mt-3 text-sm font-semibold text-slate-800 dark:text-slate-200">
+                  {uploadFile ? uploadFile.name : "Current profile photo"}
+                </p>
+
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  JPG, PNG, or WebP · Maximum 5 MB
+                </p>
+              </div>
+
+              <label className="mt-6 flex cursor-pointer flex-col items-center rounded-2xl border-2 border-dashed border-slate-300 px-4 py-7 text-center transition hover:border-blue-500 hover:bg-blue-50/50 dark:border-slate-700 dark:hover:border-blue-500 dark:hover:bg-blue-400/5">
+                <Upload
+                  size={23}
+                  className="text-blue-600 dark:text-blue-400"
+                />
+                <span className="mt-3 text-sm font-semibold text-slate-800 dark:text-slate-200">
+                  Choose a profile image
+                </span>
+                <span className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Select an image from your computer
+                </span>
+
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileChange}
+                  disabled={uploading}
+                  className="sr-only"
+                />
+              </label>
+
+              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  disabled={uploading}
+                  className={secondaryButtonClass}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={uploading || !uploadFile}
+                  className={primaryButtonClass}
+                >
+                  {uploading ? (
+                    <Loader2 size={17} className="animate-spin" />
+                  ) : (
+                    <ImagePlus size={17} />
+                  )}
+                  {uploading ? "Uploading..." : "Upload photo"}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {/* -------------------------------------------------------------------- */}
+      {/*                            Delete confirmation                       */}
+      {/* -------------------------------------------------------------------- */}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-driver-title"
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900"
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-600 dark:bg-red-400/10 dark:text-red-400">
+              <Trash2 size={22} />
+            </div>
+
+            <h2
+              id="delete-driver-title"
+              className="mt-4 text-lg font-bold text-slate-900 dark:text-white"
+            >
+              Delete driver?
+            </h2>
+
+            <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+              You are about to delete{" "}
+              <span className="font-semibold text-slate-800 dark:text-slate-200">
+                {getDriverName(deleteTarget)}
+              </span>
+              . This action cannot be undone.
+            </p>
+
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                disabled={submitting}
+                className={secondaryButtonClass}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void handleDelete()}
+                disabled={submitting}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {submitting ? (
+                  <Loader2 size={17} className="animate-spin" />
+                ) : (
+                  <Trash2 size={17} />
+                )}
+                {submitting ? "Deleting..." : "Delete Driver"}
               </button>
             </div>
           </section>

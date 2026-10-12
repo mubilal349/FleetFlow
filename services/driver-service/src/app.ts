@@ -16,19 +16,28 @@ export async function buildApp() {
     logger: true,
   });
 
-  await app.register(helmet);
+  // Security headers.
+  // Allow the frontend at localhost:3000 to display driver images
+  // served by this service on localhost:4009.
+  await app.register(helmet, {
+    crossOriginResourcePolicy: {
+      policy: "cross-origin",
+    },
+  });
 
+  // Allow requests from the FleetFlow frontend.
   await app.register(cors, {
-    origin: "http://localhost:3000",
+    origin: ["http://localhost:3000", "http://127.0.0.1:3000"],
     methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
     credentials: true,
   });
 
+  // JWT authentication.
   await app.register(jwt, {
     secret: env.JWT_SECRET,
   });
 
-  // Enable multipart image uploads (maximum 5 MB, one file).
+  // Enable multipart image uploads (one file, maximum 5 MB).
   await app.register(multipart, {
     limits: {
       files: 1,
@@ -36,7 +45,7 @@ export async function buildApp() {
     },
   });
 
-  // Serve uploaded images at /uploads/*
+  // Serve uploaded driver images at /uploads/*
   const uploadsDirectory = path.resolve(process.cwd(), "uploads");
 
   await app.register(fastifyStatic, {
@@ -44,9 +53,11 @@ export async function buildApp() {
     prefix: "/uploads/",
   });
 
+  // Application routes.
   await app.register(healthRoutes);
   await app.register(driverRoutes);
 
+  // Centralized error handler.
   app.setErrorHandler(
     (error: Error & { statusCode?: number }, request, reply) => {
       request.log.error(error);
