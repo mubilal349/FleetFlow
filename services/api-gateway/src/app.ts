@@ -131,6 +131,18 @@ export const buildApp = async () => {
   });
 
   // =========================
+  // Driver Service
+  // =========================
+
+  const driverServiceUrl =
+    process.env.DRIVER_SERVICE_URL || "http://localhost:4009";
+  await app.register(proxy, {
+    upstream: driverServiceUrl,
+    prefix: "/api/drivers",
+    rewritePrefix: "/drivers",
+  });
+
+  // =========================
   // Gateway Routes
   // =========================
 
