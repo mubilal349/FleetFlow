@@ -13,7 +13,7 @@ async function startServer() {
       host: env.HOST,
     });
 
-    app.log.info(`Trip Service listening on http://localhost:${env.PORT}`);
+    console.log(`Trip Service running on http://localhost:${env.PORT}`);
   } catch (error) {
     app.log.error(error);
     await closeDatabase();

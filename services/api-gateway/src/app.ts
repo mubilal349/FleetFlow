@@ -143,6 +143,17 @@ export const buildApp = async () => {
   });
 
   // =========================
+  // Trip Service
+  // =========================
+  const tripServiceUrl =
+    process.env.TRIP_SERVICE_URL || "http://localhost:4010";
+  await app.register(proxy, {
+    upstream: tripServiceUrl,
+    prefix: "/api/trips",
+    rewritePrefix: "/trips",
+  });
+
+  // =========================
   // Gateway Routes
   // =========================
 
