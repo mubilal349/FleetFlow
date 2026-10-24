@@ -161,8 +161,8 @@ export const buildApp = async () => {
 
   await app.register(proxy, {
     upstream: dispatchServiceUrl,
-    prefix: "/api/dispatch",
-    rewritePrefix: "/dispatch",
+    prefix: "/api/dispatches",
+    rewritePrefix: "/dispatches",
   });
 
   // =========================
