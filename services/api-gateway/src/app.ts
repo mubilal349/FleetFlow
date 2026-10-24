@@ -154,6 +154,18 @@ export const buildApp = async () => {
   });
 
   // =========================
+  // Dispatch Service
+  // =========================
+  const dispatchServiceUrl =
+    process.env.DISPATCH_SERVICE_URL || "http://localhost:4011";
+
+  await app.register(proxy, {
+    upstream: dispatchServiceUrl,
+    prefix: "/api/dispatch",
+    rewritePrefix: "/dispatch",
+  });
+
+  // =========================
   // Gateway Routes
   // =========================
 
