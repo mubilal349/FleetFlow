@@ -4,6 +4,7 @@ import { assignmentClient } from "./assignmentClient.js";
 import { driverClient } from "./driverClient.js";
 import { tripClient } from "./tripClient.js";
 import { vehicleClient } from "./vehicleClient.js";
+import { ServiceClientError } from "./httpClient.js";
 
 import { dispatchRepository } from "../repositories/dispatchRepository.js";
 
@@ -75,15 +76,18 @@ function assertResourceAvailable(
   resource: { status?: string },
   resourceName: string,
 ): void {
-  if (!resource.status) {
+  if (typeof resource.status !== "string" || !resource.status.trim()) {
     throw new DispatchServiceError(
-      `Could not verify ${resourceName} availability`,
+      `Could not verify ${resourceName} availability. The service response is missing its status field.`,
       502,
     );
   }
 
-  if (resource.status.toLowerCase() !== "available") {
-    throw new DispatchServiceError(`${resourceName} is not available`, 409);
+  if (resource.status.trim().toLowerCase() !== "available") {
+    throw new DispatchServiceError(
+      `${resourceName} is not available (current status: ${resource.status})`,
+      409,
+    );
   }
 }
 
@@ -143,6 +147,48 @@ function validateTransition(
   }
 }
 
+/**
+ * Fetch a vehicle and driver while preserving useful service errors.
+ * HTTP/network errors are translated into dispatch-specific errors.
+ */
+async function getAvailableResources(
+  vehicleId: string,
+  driverId: string,
+  token: string,
+): Promise<{
+  vehicle: Awaited<ReturnType<typeof vehicleClient.getVehicle>>;
+  driver: Awaited<ReturnType<typeof driverClient.getDriver>>;
+}> {
+  try {
+    const [vehicle, driver] = await Promise.all([
+      vehicleClient.getVehicle(vehicleId, token),
+      driverClient.getDriver(driverId, token),
+    ]);
+
+    return { vehicle, driver };
+  } catch (error) {
+    if (error instanceof DispatchServiceError) {
+      throw error;
+    }
+
+    if (error instanceof ServiceClientError) {
+      throw new DispatchServiceError(
+        `${error.serviceName} verification failed: ${error.message}`,
+        error.statusCode >= 400 && error.statusCode <= 599
+          ? error.statusCode
+          : 502,
+      );
+    }
+
+    throw new DispatchServiceError(
+      error instanceof Error
+        ? `Could not verify vehicle and driver availability: ${error.message}`
+        : "Could not verify vehicle and driver availability",
+      502,
+    );
+  }
+}
+
 export const dispatchService = {
   async create(
     input: CreateDispatchInput,
@@ -180,8 +226,8 @@ export const dispatchService = {
 
     let status: DispatchStatus = "pending";
     let assignmentId: string | null = null;
-    let vehicleId: string | null = input.vehicleId ?? null;
-    let driverId: string | null = input.driverId ?? null;
+    const vehicleId: string | null = input.vehicleId ?? null;
+    const driverId: string | null = input.driverId ?? null;
 
     if (vehicleId || driverId) {
       if (!vehicleId || !driverId) {
@@ -190,10 +236,11 @@ export const dispatchService = {
         );
       }
 
-      const [vehicle, driver] = await Promise.all([
-        vehicleClient.getVehicle(vehicleId, token),
-        driverClient.getDriver(driverId, token),
-      ]);
+      const { vehicle, driver } = await getAvailableResources(
+        vehicleId,
+        driverId,
+        token,
+      );
 
       assertSameOrganization(vehicle, actor.organizationId, "Vehicle");
       assertSameOrganization(driver, actor.organizationId, "Driver");
@@ -201,10 +248,30 @@ export const dispatchService = {
       assertResourceAvailable(vehicle, "Vehicle");
       assertResourceAvailable(driver, "Driver");
 
+      function getStartingMileage(vehicle: {
+        currentMileage?: number;
+      }): number {
+        const mileage = vehicle.currentMileage;
+
+        if (
+          typeof mileage !== "number" ||
+          !Number.isFinite(mileage) ||
+          mileage < 0
+        ) {
+          throw new DispatchServiceError(
+            "Vehicle current mileage is missing or invalid. Update the vehicle record before creating an assignment.",
+            400,
+          );
+        }
+
+        return mileage;
+      }
+
       const assignment = await assignmentClient.create(
         {
           vehicleId,
           driverId,
+          startingMileage: getStartingMileage(vehicle),
           notes: input.notes,
           expectedReturnDate: input.scheduledAt,
         },
@@ -340,13 +407,15 @@ export const dispatchService = {
         );
       }
 
-      const [vehicle, driver] = await Promise.all([
-        vehicleClient.getVehicle(vehicleId, token),
-        driverClient.getDriver(driverId, token),
-      ]);
+      const { vehicle, driver } = await getAvailableResources(
+        vehicleId,
+        driverId,
+        token,
+      );
 
       assertSameOrganization(vehicle, actor.organizationId, "Vehicle");
       assertSameOrganization(driver, actor.organizationId, "Driver");
+
       assertResourceAvailable(vehicle, "Vehicle");
       assertResourceAvailable(driver, "Driver");
 
@@ -388,21 +457,40 @@ export const dispatchService = {
       );
     }
 
-    const [vehicle, driver] = await Promise.all([
-      vehicleClient.getVehicle(vehicleId, token),
-      driverClient.getDriver(driverId, token),
-    ]);
-
-    assertSameOrganization(vehicle, actor.organizationId, "Vehicle");
-    assertSameOrganization(driver, actor.organizationId, "Driver");
-    assertResourceAvailable(vehicle, "Vehicle");
-    assertResourceAvailable(driver, "Driver");
-
-    const result = await assignmentClient.create(
-      { vehicleId, driverId, notes: current.notes ?? undefined },
+    const { vehicle, driver } = await getAvailableResources(
+      vehicleId,
+      driverId,
       token,
     );
 
+    assertSameOrganization(vehicle, actor.organizationId, "Vehicle");
+    assertSameOrganization(driver, actor.organizationId, "Driver");
+
+    assertResourceAvailable(vehicle, "Vehicle");
+    assertResourceAvailable(driver, "Driver");
+
+    const startingMileage = vehicle.currentMileage;
+
+    if (
+      typeof startingMileage !== "number" ||
+      !Number.isFinite(startingMileage) ||
+      startingMileage < 0
+    ) {
+      throw new DispatchServiceError(
+        "Vehicle current mileage is missing or invalid. Please update the vehicle record.",
+        400,
+      );
+    }
+
+    const result = await assignmentClient.create(
+      {
+        vehicleId,
+        driverId,
+        startingMileage,
+        notes: current.notes ?? undefined,
+      },
+      token,
+    );
     const payload =
       typeof result === "object" && result !== null && "data" in result
         ? result.data
@@ -416,7 +504,6 @@ export const dispatchService = {
     }
 
     const record = payload as { id?: string; _id?: string };
-
     const assignmentId = record.id ?? record._id;
 
     if (!assignmentId) {

@@ -1,5 +1,4 @@
 import type { FastifyError, FastifyInstance } from "fastify";
-
 import { ZodError } from "zod";
 
 import { DispatchServiceError } from "../services/dispatchService.js";
@@ -19,6 +18,14 @@ export function registerErrorHandler(app: FastifyInstance): void {
     }
 
     if (error instanceof DispatchServiceError) {
+      request.log.error(
+        {
+          err: error,
+          statusCode: error.statusCode,
+        },
+        "Dispatch service operation failed",
+      );
+
       return reply.code(error.statusCode).send({
         success: false,
         message: error.message,
@@ -28,18 +35,27 @@ export function registerErrorHandler(app: FastifyInstance): void {
     if (error instanceof ServiceClientError) {
       request.log.error(
         {
+          err: error,
           service: error.serviceName,
           statusCode: error.statusCode,
+          downstreamMessage: error.message,
         },
         "Downstream service request failed",
       );
 
       const statusCode = error.statusCode >= 500 ? 502 : error.statusCode;
 
+      // During development, expose the downstream error to help
+      // identify incorrect URLs, missing records, and authorization issues.
+      const isDevelopment = process.env.NODE_ENV !== "production";
+
       return reply.code(statusCode).send({
         success: false,
-        message: "A dependent service request failed",
+        message: isDevelopment
+          ? error.message
+          : "A dependent service request failed",
         service: error.serviceName,
+        ...(isDevelopment ? { downstreamStatusCode: error.statusCode } : {}),
       });
     }
 

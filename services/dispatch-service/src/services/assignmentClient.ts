@@ -4,8 +4,8 @@ import { requestJson } from "./httpClient.js";
 export interface CreateAssignmentInput {
   vehicleId: string;
   driverId: string;
-  startingMileage?: number;
-  expectedReturnDate?: string;
+  startingMileage: number;
+  expectedReturnDate?: string | null;
   notes?: string;
 }
 

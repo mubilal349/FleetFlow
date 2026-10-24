@@ -13,7 +13,7 @@ async function startServer(): Promise<void> {
       host: "0.0.0.0",
     });
 
-    app.log.info(`Dispatch Service listening on port ${env.PORT}`);
+    console.log(`Trip Service running on http://localhost:${env.PORT}`);
   } catch (error) {
     app.log.error(error, "Failed to start Dispatch Service");
 

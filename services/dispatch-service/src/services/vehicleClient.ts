@@ -1,5 +1,6 @@
 import { serviceUrls } from "../config/serviceUrls.js";
 import { requestJson } from "./httpClient.js";
+import { DispatchServiceError } from "./dispatchService.js";
 
 export interface VehicleInfo {
   id?: string;
@@ -8,6 +9,50 @@ export interface VehicleInfo {
   status?: string;
   organizationId?: string;
   organization?: string;
+  currentMileage?: number;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function unwrapVehicleResponse(result: unknown): VehicleInfo {
+  let payload: unknown = result;
+
+  // Support common API response wrappers.
+  for (let i = 0; i < 3; i++) {
+    if (!isRecord(payload)) {
+      throw new DispatchServiceError(
+        "Vehicle Service returned an invalid response",
+        502,
+      );
+    }
+
+    // A vehicle object should have a recognizable identifier.
+    if ("_id" in payload || "id" in payload) {
+      return payload as VehicleInfo;
+    }
+
+    if ("data" in payload) {
+      payload = payload.data;
+      continue;
+    }
+
+    if ("vehicle" in payload) {
+      payload = payload.vehicle;
+      continue;
+    }
+
+    throw new DispatchServiceError(
+      "Vehicle Service response did not contain a vehicle object",
+      502,
+    );
+  }
+
+  throw new DispatchServiceError(
+    "Vehicle Service response has too many nested wrappers",
+    502,
+  );
 }
 
 export const vehicleClient = {
@@ -21,18 +66,20 @@ export const vehicleClient = {
   },
 
   async getVehicle(vehicleId: string, token: string): Promise<VehicleInfo> {
-    const result = await this.getById(vehicleId, token);
-
-    // Adjust this mapping if your Vehicle Service uses another response shape.
-    const payload =
-      typeof result === "object" && result !== null && "data" in result
-        ? result.data
-        : result;
-
-    if (typeof payload !== "object" || payload === null) {
-      throw new Error("Invalid vehicle response");
+    if (!vehicleId?.trim()) {
+      throw new DispatchServiceError("Vehicle ID is required", 400);
     }
 
-    return payload as VehicleInfo;
+    const result = await this.getById(vehicleId, token);
+    const vehicle = unwrapVehicleResponse(result);
+
+    if (!vehicle.status?.trim()) {
+      throw new DispatchServiceError(
+        "Vehicle Service returned a vehicle without a status. Check the Vehicle Service response mapping.",
+        502,
+      );
+    }
+
+    return vehicle;
   },
 };

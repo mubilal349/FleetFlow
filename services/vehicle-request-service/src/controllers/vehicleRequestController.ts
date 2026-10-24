@@ -53,7 +53,7 @@ export async function createVehicleRequestController(
       {
         organizationId: request.user.organizationId,
 
-        customerId: request.user.userId,
+        customerId: request.user.id,
 
         vehicleId: body.vehicleId,
 
@@ -94,7 +94,7 @@ export async function getCustomerRequestsController(
 
     const result = await getCustomerRequestsService(
       request.user.organizationId,
-      request.user.userId,
+      request.user.id,
       query.page,
       query.limit,
     );
@@ -150,7 +150,7 @@ export async function getCustomerRequestController(
     const result = await getCustomerRequestService(
       params.id,
       request.user.organizationId,
-      request.user.userId,
+      request.user.id,
     );
 
     return reply.send({
@@ -176,7 +176,7 @@ export async function cancelVehicleRequestController(
     const result = await cancelVehicleRequestService(
       params.id,
       request.user.organizationId,
-      request.user.userId,
+      request.user.id,
     );
 
     return reply.send({
@@ -202,7 +202,7 @@ export async function approveVehicleRequestController(
     const result = await approveVehicleRequestService(
       params.id,
       request.user.organizationId,
-      request.user.userId,
+      request.user.id,
     );
 
     return reply.send({
@@ -230,7 +230,7 @@ export async function rejectVehicleRequestController(
     const result = await rejectVehicleRequestService(
       params.id,
       request.user.organizationId,
-      request.user.userId,
+      request.user.id,
       body.rejectionReason,
     );
 
